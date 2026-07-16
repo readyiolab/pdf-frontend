@@ -11,9 +11,11 @@ import { toast } from "sonner";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { FileCard } from "@/components/ui/file-card";
 import { ProcessingStepper } from "@/components/ui/processing-stepper";
+import { Progress } from "@/components/ui/progress";
 import { SuccessScreen } from "@/components/ui/success-screen";
 import { ErrorScreen } from "@/components/ui/error-screen";
 import { Spinner } from "@/components/ui/spinner";
+import { AuthModal } from "@/components/auth/AuthModal";
 
 // Tool settings
 import { SplitSettings } from "./tools/SplitSettings";
@@ -148,6 +150,9 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
   const [pdfToJpgDpi, setPdfToJpgDpi] = useState("150");
   const [ocrLanguages, setOcrLanguages] = useState("eng");
 
+  // Auth-after-upload: opened when a logged-out user clicks Process.
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
   // Reset when tool changes
   useEffect(() => {
     fileUpload.clearFiles();
@@ -215,19 +220,12 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
     }
   };
 
-  // Execute processing pipeline
-  const handleProcess = async () => {
-    if (!token) {
-      toast.error("Please sign in or create a guest session to process files.");
-      return;
-    }
-    if (fileUpload.files.length === 0) {
-      toast.error("Please select at least one file.");
-      return;
-    }
-
+  // The actual upload → process → download pipeline. Assumes the user is
+  // authenticated (apiService reads the token from localStorage, which is set
+  // synchronously on login, so this is safe to call straight from the modal).
+  const runProcessing = async () => {
     try {
-      // 1. Upload files
+      // 1. Upload the already-selected files (still in browser memory)
       jobProcessor.reset();
       const uploadedKeys = await fileUpload.uploadAll();
 
@@ -241,6 +239,27 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
     } catch (err: any) {
       toast.error(err.message || "An unexpected error occurred.");
     }
+  };
+
+  // Entry point from the Process button. If the user isn't signed in, we open
+  // the auth modal instead of failing — their files stay staged and processing
+  // resumes automatically once they authenticate.
+  const handleProcess = async () => {
+    if (fileUpload.files.length === 0) {
+      toast.error("Please select at least one file.");
+      return;
+    }
+    if (!token) {
+      setAuthModalOpen(true);
+      return;
+    }
+    await runProcessing();
+  };
+
+  // Called by the modal after a successful sign-in / sign-up / guest session.
+  const handleAuthSuccess = async () => {
+    setAuthModalOpen(false);
+    await runProcessing();
   };
 
   const handleReset = () => {
@@ -282,8 +301,10 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
       <div className="max-w-lg mx-auto">
         <ErrorScreen
           message={jobProcessor.error || "An unknown error occurred."}
-          onRetry={handleReset}
-          onGoBack={() => window.location.href = "/workspace"}
+          // Files are still in memory — retry re-runs without asking the user to
+          // re-select them (the failed job's uploads were already purged).
+          onRetry={() => runProcessing()}
+          onGoBack={handleReset}
         />
       </div>
     );
@@ -329,10 +350,18 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
     <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-14rem)] animate-fade-in">
       {/* LEFT: File Preview & Processing Area */}
       <div className="flex-1 flex flex-col gap-4">
-        {/* Processing stepper */}
+        {/* Processing stepper + live progress */}
         {isProcessing && (
           <div className="rounded-2xl border bg-card p-4 shadow-sm animate-fade-in-down">
             <ProcessingStepper currentStep={currentStep} />
+            {jobProcessor.step !== "idle" && jobProcessor.progress > 0 && (
+              <div className="mt-4 flex flex-col gap-1.5">
+                <Progress value={jobProcessor.progress} />
+                <span className="text-right text-[11px] font-medium tabular-nums text-muted-foreground">
+                  {jobProcessor.progress}%
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -575,6 +604,13 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
           </div>
         </div>
       </div>
+
+      {/* Auth-after-upload modal — resumes processing on success */}
+      <AuthModal
+        open={authModalOpen}
+        onOpenChange={setAuthModalOpen}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 };

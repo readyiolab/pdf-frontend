@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { type Job } from "../services/api";
-import { S3_BASE_URL, getToolById, formatFilenameFromKey } from "@/lib/design-tokens";
+import { apiService } from "../services/api";
+import { getToolById, formatFilenameFromKey } from "@/lib/design-tokens";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Spinner } from "@/components/ui/spinner";
 import { Download, AlertCircle, Clock, CheckCircle2, ChevronRight, ChevronLeft, RefreshCw, XCircle } from "lucide-react";
@@ -42,14 +43,18 @@ export const History: React.FC = () => {
     setTimeout(() => setIsRefreshing(false), 500); // UI feedback
   };
 
-  const handleDownload = (outputFile: string) => {
-    const link = document.createElement("a");
-    link.href = `${S3_BASE_URL}/${outputFile}`;
-    link.target = "_blank";
-    link.download = formatFilenameFromKey(outputFile);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (jobId: string, outputFile: string) => {
+    try {
+      const { url } = await apiService.getDownloadUrl(jobId);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = formatFilenameFromKey(outputFile);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Download failed:", err);
+    }
   };
 
   if (loading) {
@@ -185,7 +190,7 @@ export const History: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => canDownload ? handleDownload(job.outputFile!) : null}
+                        onClick={() => canDownload ? handleDownload(job.id, job.outputFile!) : null}
                         disabled={!canDownload}
                         className={cn(
                           "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all shadow-sm",

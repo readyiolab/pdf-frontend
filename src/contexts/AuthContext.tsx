@@ -67,6 +67,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    // Revoke the token server-side (best-effort), then clear local state.
+    apiService.logout().catch(() => undefined);
     localStorage.removeItem("saas_jwt_token");
     setToken(null);
     setUser(null);
@@ -86,12 +88,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const guestSession = async () => {
     setLoading(true);
     try {
-      const random = Math.floor(Math.random() * 100000);
-      const email = `guest_${random}@example.com`;
-      const password = `Password${random}`;
-      const name = `Guest User #${random}`;
-
-      const data = await apiService.register(email, name, password);
+      // Real anonymous session issued by the server (no weak generated password).
+      const data = await apiService.guestLogin();
       localStorage.setItem("saas_jwt_token", data.token);
       setToken(data.token);
       setUser(data.user);

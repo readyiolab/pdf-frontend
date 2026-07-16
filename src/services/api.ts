@@ -24,7 +24,7 @@ export interface Job {
   expiresAt: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 class ApiError extends Error {
   public status: number;
@@ -100,7 +100,15 @@ async function apiFetch(endpoint: string, options: RequestInit = {}) {
       localStorage.removeItem("saas_jwt_token");
       window.location.href = "/login";
     }
-    throw new ApiError(data.error || "An error occurred", response.status);
+    // The API returns { status, message, errors? }. Prefer the server message,
+    // then the first validation error, then a generic fallback.
+    const validationMsg = Array.isArray(data.errors) && data.errors.length
+      ? data.errors.map((e: { message: string }) => e.message).join(", ")
+      : null;
+    throw new ApiError(
+      data.message || validationMsg || "An error occurred",
+      response.status
+    );
   }
 
   return data;
@@ -111,8 +119,12 @@ export const apiService = {
   register: (email: string, name: string, password: string) => 
     apiFetch("/auth/register", { method: "POST", body: JSON.stringify({ email, name, password }) }),
   
-  login: (email: string, password: string) => 
+  login: (email: string, password: string) =>
     apiFetch("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+
+  guestLogin: () => apiFetch("/auth/guest", { method: "POST" }),
+
+  logout: () => apiFetch("/auth/logout", { method: "POST" }),
 
   // User
   getProfile: () => apiFetch("/users/me", { method: "GET" }),
@@ -168,8 +180,12 @@ export const apiService = {
   createJob: (tool: string, inputFiles: string[], options: any = {}) => 
     apiFetch("/jobs", { method: "POST", body: JSON.stringify({ tool, inputFiles, options }) }),
 
-  getJobStatus: (jobId: string) => 
+  getJobStatus: (jobId: string) =>
     apiFetch(`/jobs/${jobId}`, { method: "GET" }),
+
+  // Returns a short-lived signed URL for the (private) result file.
+  getDownloadUrl: (jobId: string): Promise<{ url: string }> =>
+    apiFetch(`/jobs/${jobId}/download`, { method: "GET" }),
 
   // Billing
   initiateCheckout: (planId: string) => 
