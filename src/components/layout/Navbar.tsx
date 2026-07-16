@@ -13,7 +13,16 @@ import {
   Zap,
 } from "lucide-react";
 import { useTheme } from "../theme-provider";
-import { TOOLS } from "@/lib/design-tokens";
+import { TOOLS, TOOL_CATEGORIES } from "@/lib/design-tokens";
+
+// Group every tool under its primary category (categories[1]; categories[0] is
+// always "All") so the full toolkit fits in the hover menu without duplicates.
+const TOOL_GROUPS = TOOL_CATEGORIES.filter((cat) => cat !== "All")
+  .map((cat) => ({
+    category: cat,
+    tools: TOOLS.filter((tool) => tool.categories[1] === cat),
+  }))
+  .filter((group) => group.tools.length > 0);
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -70,30 +79,39 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
               Pricing <Zap className="h-3 w-3 text-amber-500 fill-amber-500" />
             </Link>
 
-            {/* Mega Menu Dropdown */}
+            {/* Mega Menu Dropdown — every tool, grouped by category */}
             {isToolsOpen && (
-              <div 
-                className="absolute top-full left-0 mt-2 w-[480px] rounded-2xl border bg-card p-4 shadow-xl grid grid-cols-2 gap-2 animate-fade-in-up"
+              <div
+                className="absolute top-full left-0 mt-2 w-[640px] max-w-[calc(100vw-2rem)] rounded-2xl border bg-card p-4 shadow-xl grid grid-cols-2 gap-x-6 gap-y-4 animate-fade-in-up max-h-[70vh] overflow-y-auto"
                 onMouseEnter={() => setIsToolsOpen(true)}
                 onMouseLeave={() => setIsToolsOpen(false)}
               >
-                {TOOLS.slice(0, 8).map(tool => (
-                  <Link
-                    key={tool.id}
-                    to={`/workspace/${tool.id}`}
-                    className="flex items-center gap-3 rounded-xl p-2 hover:bg-muted transition-colors"
-                    onClick={() => setIsToolsOpen(false)}
-                  >
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${tool.accent}`}>
-                      <tool.icon className={`h-4 w-4 ${tool.accentText}`} />
+                {TOOL_GROUPS.map((group) => (
+                  <div key={group.category}>
+                    <span className="px-2 text-[10px] font-extrabold uppercase tracking-widest text-muted-foreground block mb-1.5">
+                      {group.category}
+                    </span>
+                    <div className="space-y-0.5">
+                      {group.tools.map((tool) => (
+                        <Link
+                          key={tool.id}
+                          to={`/workspace/${tool.id}`}
+                          className="flex items-center gap-3 rounded-xl p-2 hover:bg-muted transition-colors"
+                          onClick={() => setIsToolsOpen(false)}
+                        >
+                          <div className={`flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0 ${tool.accent}`}>
+                            <tool.icon className={`h-4 w-4 ${tool.accentText}`} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold">{tool.name}</div>
+                            <div className="text-[10px] text-muted-foreground line-clamp-1">{tool.desc}</div>
+                          </div>
+                        </Link>
+                      ))}
                     </div>
-                    <div>
-                      <div className="text-sm font-bold">{tool.name}</div>
-                      <div className="text-[10px] text-muted-foreground line-clamp-1">{tool.desc}</div>
-                    </div>
-                  </Link>
+                  </div>
                 ))}
-                <div className="col-span-2 pt-2 mt-2 border-t text-center">
+                <div className="col-span-2 pt-2 mt-1 border-t text-center">
                   <Link to="/workspace" className="text-xs font-semibold text-primary hover:underline">
                     View all tools &rarr;
                   </Link>

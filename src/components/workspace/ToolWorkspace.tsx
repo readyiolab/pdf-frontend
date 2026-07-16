@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useJobProcessor } from "@/hooks/useJobProcessor";
 import { usePdfPreviews } from "@/hooks/usePdfPreviews";
+import { useFileThumbnails } from "@/hooks/useFileThumbnails";
 import { getToolById, formatFileSize } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ import { SuccessScreen } from "@/components/ui/success-screen";
 import { ErrorScreen } from "@/components/ui/error-screen";
 import { Spinner } from "@/components/ui/spinner";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { PageZoomModal } from "@/components/workspace/PageZoomModal";
 
 // Tool settings
 import { SplitSettings } from "./tools/SplitSettings";
@@ -123,18 +125,10 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
   const firstFile = fileUpload.files.length === 1 ? fileUpload.files[0] : null;
   const pdfPreviews = usePdfPreviews(firstFile);
 
-  // Image previews for jpgToPdf tool
-  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (fileUpload.files.length > 0 && (toolId === "jpgToPdf" || fileUpload.files[0]?.type?.startsWith("image/"))) {
-      const urls = fileUpload.files.map((file) => URL.createObjectURL(file));
-      setImagePreviews(urls);
-      return () => urls.forEach((url) => URL.revokeObjectURL(url));
-    } else {
-      setImagePreviews([]);
-    }
-  }, [fileUpload.files, toolId]);
+  // Per-file thumbnails for the multi-file list (covers both images and PDFs —
+  // previously only images got a thumbnail here, so a multi-PDF selection like
+  // Merge showed plain file names with no preview at all).
+  const fileThumbnails = useFileThumbnails(fileUpload.files);
 
   // Tool-specific options state
   const [splitOptions, setSplitOptions] = useState<Record<string, any>>({ ranges: ["1-2"] });
@@ -153,11 +147,13 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
   // Auth-after-upload: opened when a logged-out user clicks Process.
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
+  // PageZoom: index of the page thumbnail currently open full-size, or null.
+  const [zoomIndex, setZoomIndex] = useState<number | null>(null);
+
   // Reset when tool changes
   useEffect(() => {
     fileUpload.clearFiles();
     jobProcessor.reset();
-    setImagePreviews([]);
   }, [toolId]);
 
   // DnD sensors
@@ -406,32 +402,81 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
                 </span>
               </div>
 
-              {/* Page thumbnails */}
+              {/* Page previews: a large hero preview of page 1, plus a filmstrip
+                  of the rest — both click to open full-size (PageZoom). */}
               {pdfPreviews.isLoading ? (
                 <div className="flex flex-col items-center gap-3 py-12">
                   <Spinner className="h-6 w-6 text-primary" />
-                  <span className="text-xs text-muted-foreground font-medium">Generating previews...</span>
+                  <span className="text-xs text-muted-foreground font-medium">Opening document...</span>
                 </div>
               ) : pdfPreviews.previews.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {pdfPreviews.previews.map((previewUrl, idx) => (
-                    <div
-                      key={idx}
-                      className="relative rounded-xl border bg-muted/30 p-2 aspect-[3/4] flex flex-col transition-all duration-200 hover:shadow-md hover:border-primary/20"
-                    >
-                      <div className="flex-1 flex items-center justify-center overflow-hidden rounded-lg bg-white dark:bg-background">
+                <div className="space-y-3">
+                  {/* Hero preview — page 1, large */}
+                  <button
+                    type="button"
+                    onClick={() => pdfPreviews.previews[0] && setZoomIndex(0)}
+                    className="group relative w-full rounded-xl border bg-muted/30 p-3 flex items-center justify-center overflow-hidden min-h-[280px] sm:min-h-[360px] transition-all hover:border-primary/30 hover:shadow-md"
+                  >
+                    {pdfPreviews.previews[0] ? (
+                      <>
                         <img
-                          src={previewUrl}
-                          alt={`Page ${idx + 1}`}
-                          className="max-h-full max-w-full object-contain"
+                          src={pdfPreviews.previews[0]}
+                          alt="Page 1"
+                          className="max-h-[360px] max-w-full object-contain rounded-lg shadow-sm bg-white dark:bg-background"
                           style={toolId === "rotate" ? { transform: `rotate(${rotateAngle}deg)`, transition: "transform 0.3s" } : undefined}
                         />
+                        <span className="absolute inset-0 flex items-center justify-center bg-background/0 group-hover:bg-background/40 transition-colors">
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold px-3 py-1.5 rounded-full bg-foreground text-background shadow-lg">
+                            Click to PageZoom
+                          </span>
+                        </span>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 animate-pulse">
+                        <div className="h-40 w-32 rounded-lg bg-muted" />
+                        <span className="text-[11px] text-muted-foreground">Rendering page 1…</span>
                       </div>
-                      <span className="text-center text-[10px] font-semibold text-muted-foreground mt-1.5">
-                        Page {idx + 1}
-                      </span>
+                    )}
+                  </button>
+
+                  {/* Filmstrip — remaining pages */}
+                  {pdfPreviews.previews.length > 1 && (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      {pdfPreviews.previews.map((previewUrl, idx) => {
+                        if (idx === 0) return null;
+                        return (
+                          <button
+                            type="button"
+                            key={idx}
+                            onClick={() => previewUrl && setZoomIndex(idx)}
+                            disabled={!previewUrl}
+                            className="group relative rounded-lg border bg-muted/30 p-1.5 aspect-[3/4] flex flex-col transition-all duration-200 hover:shadow-md hover:border-primary/20 disabled:cursor-default"
+                          >
+                            <div className="flex-1 flex items-center justify-center overflow-hidden rounded-md bg-white dark:bg-background">
+                              {previewUrl ? (
+                                <img
+                                  src={previewUrl}
+                                  alt={`Page ${idx + 1}`}
+                                  className="max-h-full max-w-full object-contain"
+                                  style={toolId === "rotate" ? { transform: `rotate(${rotateAngle}deg)`, transition: "transform 0.3s" } : undefined}
+                                />
+                              ) : (
+                                <div className="h-full w-full animate-pulse bg-muted" />
+                              )}
+                            </div>
+                            <span className="text-center text-[10px] font-semibold text-muted-foreground mt-1">
+                              Page {idx + 1}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                  ))}
+                  )}
+                  {pdfPreviews.pageCount > pdfPreviews.previews.length && (
+                    <p className="text-center text-[11px] text-muted-foreground">
+                      Showing first {pdfPreviews.previews.length} of {pdfPreviews.pageCount} pages
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2 py-8">
@@ -457,7 +502,7 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
                       id={fileIds[i]}
                       file={file}
                       index={i}
-                      preview={imagePreviews[i]}
+                      preview={fileThumbnails[i]}
                       uploadProgress={fileUpload.uploadProgress.get(i)}
                       isUploading={fileUpload.isUploading}
                       onRemove={() => fileUpload.removeFile(i)}
@@ -494,9 +539,10 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
         </div>
       </div>
 
-      {/* RIGHT: Settings Panel */}
-      <div className="w-full lg:w-80 xl:w-96 flex flex-col gap-4">
-        <div className="rounded-2xl border bg-card p-5 shadow-sm flex-1 flex flex-col">
+      {/* RIGHT: Settings Panel — sticks in the viewport while the left side
+          (thumbnails/file list) scrolls, so the Process button is always reachable. */}
+      <div className="w-full lg:w-80 xl:w-96 flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-6rem)]">
+        <div className="rounded-2xl border bg-card p-5 shadow-sm flex-1 flex flex-col lg:max-h-[calc(100vh-6rem)] lg:overflow-hidden">
           {/* Settings header */}
           <div className="flex items-center gap-2 border-b pb-3 mb-4">
             {(() => {
@@ -610,6 +656,13 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
         open={authModalOpen}
         onOpenChange={setAuthModalOpen}
         onSuccess={handleAuthSuccess}
+      />
+
+      {/* Full-size page preview, opened by clicking any thumbnail */}
+      <PageZoomModal
+        pages={pdfPreviews.previews}
+        activeIndex={zoomIndex}
+        onOpenChange={setZoomIndex}
       />
     </div>
   );

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 
 interface PdfPreviewsResult {
-  previews: string[];
+  /** One entry per page, in order. null = still rendering that page. */
+  previews: (string | null)[];
   isLoading: boolean;
   pageCount: number;
 }
@@ -9,7 +10,7 @@ interface PdfPreviewsResult {
 // Ensure PDF.js is loaded once
 let pdfJsLoadPromise: Promise<void> | null = null;
 
-function loadPdfJs(): Promise<void> {
+export function loadPdfJs(): Promise<void> {
   if ((window as any).pdfjsLib) return Promise.resolve();
   if (pdfJsLoadPromise) return pdfJsLoadPromise;
 
@@ -29,7 +30,7 @@ function loadPdfJs(): Promise<void> {
 }
 
 export function usePdfPreviews(file: File | null, maxPages: number = 8): PdfPreviewsResult {
-  const [previews, setPreviews] = useState<string[]>([]);
+  const [previews, setPreviews] = useState<(string | null)[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pageCount, setPageCount] = useState(0);
 
@@ -58,25 +59,35 @@ export function usePdfPreviews(file: File | null, maxPages: number = 8): PdfPrev
 
         setPageCount(pdf.numPages);
         const numPages = Math.min(pdf.numPages, maxPages);
-        const urls: string[] = [];
 
-        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-          if (cancelled) break;
+        // Reserve a slot per page up front and reveal the grid immediately —
+        // pages fill in as they finish rendering instead of the user staring
+        // at a spinner until the slowest page is done.
+        setPreviews(new Array(numPages).fill(null));
+        setIsLoading(false);
+
+        // Page 1 is shown large (hero preview) so it renders sharper; the
+        // rest are small filmstrip thumbnails and render faster at a lower scale.
+        const renderPage = async (pageNum: number) => {
           const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 0.8 });
+          const viewport = page.getViewport({ scale: pageNum === 1 ? 1.4 : 0.9 });
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d");
-          if (context) {
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            await page.render({ canvasContext: context, viewport }).promise;
-            urls.push(canvas.toDataURL("image/jpeg", 0.7));
-          }
-        }
+          if (!context) return;
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          await page.render({ canvasContext: context, viewport }).promise;
+          if (cancelled) return;
+          const url = canvas.toDataURL("image/jpeg", 0.75);
+          setPreviews((prev) => {
+            const next = [...prev];
+            next[pageNum - 1] = url;
+            return next;
+          });
+        };
 
-        if (!cancelled) {
-          setPreviews(urls);
-        }
+        // All pages render concurrently rather than one-at-a-time.
+        await Promise.all(Array.from({ length: numPages }, (_, i) => renderPage(i + 1)));
       } catch (err) {
         console.error("PDF preview generation error:", err);
       } finally {
