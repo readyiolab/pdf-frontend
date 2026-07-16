@@ -8,7 +8,8 @@ async function renderPdfFirstPage(file: File): Promise<string | null> {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 0.5 });
+    // Rendered large enough to stay sharp in the grid preview tiles.
+    const viewport = page.getViewport({ scale: 0.8 });
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) return null;

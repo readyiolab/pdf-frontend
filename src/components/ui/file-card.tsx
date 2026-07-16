@@ -15,6 +15,8 @@ interface FileCardProps {
   disabled?: boolean;
   className?: string;
   dragHandleProps?: Record<string, unknown>;
+  /** "row" (default) = compact horizontal list item; "grid" = large preview tile. */
+  variant?: "row" | "grid";
 }
 
 export const FileCard: React.FC<FileCardProps> = ({
@@ -29,9 +31,91 @@ export const FileCard: React.FC<FileCardProps> = ({
   disabled = false,
   className,
   dragHandleProps,
+  variant = "row",
 }) => {
   const isPdf = file.name.toLowerCase().endsWith(".pdf");
   const isImage = file.type.startsWith("image/");
+
+  if (variant === "grid") {
+    return (
+      <div
+        className={cn(
+          "group relative flex flex-col rounded-xl border bg-card p-2 shadow-sm transition-all duration-200",
+          "hover:shadow-md hover:border-primary/20",
+          disabled && "opacity-60",
+          className
+        )}
+      >
+        {/* Large preview area — also the drag handle, so tiles reorder naturally */}
+        <div
+          className="relative aspect-[3/4] w-full rounded-lg border bg-white dark:bg-background overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing touch-none"
+          {...dragHandleProps}
+        >
+          {preview ? (
+            <img
+              src={preview}
+              alt={file.name}
+              className="h-full w-full object-contain"
+              draggable={false}
+            />
+          ) : (
+            // Only PDFs and images ever get a rendered preview — other types
+            // (e.g. Office docs) show a static icon, not a fake loading state.
+            <div className={cn("flex flex-col items-center gap-2", (isPdf || isImage) && "animate-pulse")}>
+              <FileText className={cn(
+                "h-8 w-8",
+                isPdf ? "text-red-500" : isImage ? "text-pink-500" : "text-muted-foreground"
+              )} />
+              {(isPdf || isImage) && (
+                <span className="text-[10px] text-muted-foreground">Loading preview…</span>
+              )}
+            </div>
+          )}
+
+          {/* Order badge */}
+          <span className="absolute top-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-md bg-foreground/80 text-[10px] font-bold text-background shadow">
+            {index + 1}
+          </span>
+
+          {/* Remove button */}
+          {onRemove && !disabled && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+              className="absolute top-1.5 right-1.5 p-1 rounded-md bg-background/90 text-muted-foreground hover:text-destructive shadow transition-all opacity-0 group-hover:opacity-100"
+              aria-label={`Remove ${file.name}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+
+          {/* Upload progress overlay */}
+          {isUploading && uploadProgress !== undefined && uploadProgress < 100 && (
+            <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs font-bold text-primary">{uploadProgress}%</span>
+              <div className="h-1 w-2/3 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-200"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* File info */}
+        <p className="text-[11px] font-semibold text-foreground truncate mt-1.5" title={file.name}>
+          {file.name}
+        </p>
+        <span className="text-[10px] text-muted-foreground font-medium">
+          {formatFileSize(file.size)}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div

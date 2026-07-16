@@ -54,28 +54,43 @@ export function useFileUpload(multiple: boolean = false): UseFileUploadResult {
     onProgress?: (fileIndex: number, percent: number) => void
   ): Promise<string[]> => {
     setIsUploading(true);
-    const uploadedKeys: string[] = [];
+    // Result slots are pre-sized so parallel completions can't scramble the
+    // order — tools like Merge depend on keys matching the on-screen order.
+    const uploadedKeys: string[] = new Array(files.length);
+
+    const uploadOne = async (i: number) => {
+      const file = files[i];
+      setUploadProgress((prev) => new Map(prev).set(i, 0));
+
+      const presign = await apiService.getPresignedUrl(
+        file.name,
+        file.type || "application/pdf",
+        file.size
+      );
+
+      await apiService.uploadFileToS3(file, presign.uploadUrl, (percent) => {
+        setUploadProgress((prev) => new Map(prev).set(i, percent));
+        onProgress?.(i, percent);
+      });
+
+      setUploadProgress((prev) => new Map(prev).set(i, 100));
+      uploadedKeys[i] = presign.fileKey;
+    };
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-
-        setUploadProgress((prev) => new Map(prev).set(i, 0));
-
-        const presign = await apiService.getPresignedUrl(
-          file.name,
-          file.type || "application/pdf",
-          file.size
-        );
-
-        await apiService.uploadFileToS3(file, presign.uploadUrl, (percent) => {
-          setUploadProgress((prev) => new Map(prev).set(i, percent));
-          onProgress?.(i, percent);
-        });
-
-        setUploadProgress((prev) => new Map(prev).set(i, 100));
-        uploadedKeys.push(presign.fileKey);
-      }
+      // Upload up to 3 files at a time instead of strictly one-after-another.
+      const CONCURRENCY = 3;
+      let nextIndex = 0;
+      const workers = Array.from(
+        { length: Math.min(CONCURRENCY, files.length) },
+        async () => {
+          while (nextIndex < files.length) {
+            const i = nextIndex++;
+            await uploadOne(i);
+          }
+        }
+      );
+      await Promise.all(workers);
 
       return uploadedKeys;
     } finally {

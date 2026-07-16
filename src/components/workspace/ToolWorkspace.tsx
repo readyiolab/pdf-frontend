@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useJobProcessor } from "@/hooks/useJobProcessor";
-import { usePdfPreviews } from "@/hooks/usePdfPreviews";
+import { usePdfPreviews, loadPdfJs } from "@/hooks/usePdfPreviews";
 import { useFileThumbnails } from "@/hooks/useFileThumbnails";
 import { getToolById, formatFileSize } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
+  rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -103,7 +103,7 @@ const SortableFileItem: React.FC<SortableFileItemProps> = ({
         file={file}
         index={index}
         preview={preview}
-        showDragHandle
+        variant="grid"
         onRemove={onRemove}
         uploadProgress={uploadProgress}
         isUploading={isUploading}
@@ -155,6 +155,12 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
     fileUpload.clearFiles();
     jobProcessor.reset();
   }, [toolId]);
+
+  // Warm up PDF.js the moment the workspace opens, so the first preview doesn't
+  // also have to wait for the library to download from the CDN.
+  useEffect(() => {
+    loadPdfJs().catch(() => {});
+  }, []);
 
   // DnD sensors
   const sensors = useSensors(
@@ -494,8 +500,8 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
             >
-              <SortableContext items={fileIds} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
+              <SortableContext items={fileIds} strategy={rectSortingStrategy}>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
                   {fileUpload.files.map((file, i) => (
                     <SortableFileItem
                       key={fileIds[i]}
