@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Spinner } from "./components/ui/spinner";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { Zap } from "lucide-react";
 
 // Lazy-loaded pages
@@ -13,6 +14,11 @@ const Billing = lazy(() => import("./pages/Billing"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
+// Signing pulls in pdf.js and the designer; lazy-loading keeps that weight out
+// of the initial bundle for users who only ever touch the conversion tools.
+const DocumentList = lazy(() => import("./pages/signing/DocumentList"));
+const DocumentEditor = lazy(() => import("./pages/signing/DocumentEditor"));
+const SignDocument = lazy(() => import("./pages/signing/SignDocument"));
 
 // Custom loading fallback
 const PageLoader = () => (
@@ -40,9 +46,29 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
+      {/* Radix tooltips need a Provider ancestor or they throw at render:
+          "`Tooltip` must be used within `TooltipProvider`". It sits ABOVE
+          <Routes> rather than inside AppLayout because the public signing page
+          (/s/:token) renders outside that layout and still uses the viewer
+          toolbar's tooltips — a provider in AppLayout would leave signers with
+          a blank crashed page.
+
+          delayDuration=300 rather than the component's 0 default: instant
+          tooltips on a dense toolbar fire constantly as the pointer crosses it. */}
+      <TooltipProvider delayDuration={300}>
+        <Router>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+            {/* Public signing — deliberately OUTSIDE AppLayout and outside
+                ProtectedRoute. The recipient has no account, so the app's
+                navbar/sidebar (with its login and billing links) would be
+                noise at best and misleading at worst. The signing token in the
+                URL is the only credential.
+
+                Path is /s/:token, NOT /sign/:token — /sign is the owner's
+                authenticated dashboard below, and the two would collide. */}
+            <Route path="/s/:token" element={<SignDocument />} />
+
             <Route path="/" element={<AppLayout />}>
               <Route index element={<Home />} />
               <Route path="workspace" element={<Workspace />}>
@@ -67,13 +93,27 @@ function App() {
                   <Profile />
                 </ProtectedRoute>
               } />
+
+              {/* Signing. Guests are additionally rejected by the API — a
+                  signing document is durable and must belong to a real account. */}
+              <Route path="sign" element={
+                <ProtectedRoute>
+                  <DocumentList />
+                </ProtectedRoute>
+              } />
+              <Route path="sign/:id" element={
+                <ProtectedRoute>
+                  <DocumentEditor />
+                </ProtectedRoute>
+              } />
               
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
-          </Routes>
-        </Suspense>
-      </Router>
+            </Routes>
+          </Suspense>
+        </Router>
+      </TooltipProvider>
     </AuthProvider>
   );
 }

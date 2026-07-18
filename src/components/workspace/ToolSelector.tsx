@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { TOOLS, TOOL_CATEGORIES, type ToolConfig } from "@/lib/design-tokens";
+import { TOOLS, TOOL_CATEGORIES, getToolRoute, type ToolConfig } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 
 export const ToolSelector: React.FC = () => {
@@ -47,7 +47,7 @@ export const ToolSelector: React.FC = () => {
             key={tool.id}
             tool={tool}
             index={i}
-            onClick={() => navigate(`/workspace/${tool.id}`)}
+            onClick={() => navigate(getToolRoute(tool))}
           />
         ))}
       </div>

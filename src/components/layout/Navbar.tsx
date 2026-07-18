@@ -13,7 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useTheme } from "../theme-provider";
-import { TOOLS, TOOL_CATEGORIES } from "@/lib/design-tokens";
+import { TOOLS, TOOL_CATEGORIES, getToolRoute } from "@/lib/design-tokens";
 
 // Group every tool under its primary category (categories[1]; categories[0] is
 // always "All") so the full toolkit fits in the hover menu without duplicates.
@@ -95,7 +95,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                       {group.tools.map((tool) => (
                         <Link
                           key={tool.id}
-                          to={`/workspace/${tool.id}`}
+                          to={getToolRoute(tool)}
                           className="flex items-center gap-3 rounded-xl p-2 hover:bg-muted transition-colors"
                           onClick={() => setIsToolsOpen(false)}
                         >

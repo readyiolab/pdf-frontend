@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import { TOOLS } from "@/lib/design-tokens";
+import { TOOLS, getToolRoute, type ToolConfig } from "@/lib/design-tokens";
 import {
   LayoutDashboard,
   History,
@@ -21,6 +21,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { token } = useAuth();
   const location = useLocation();
 
+  // eSign is NOT listed here — it lives in the PDF Toolkit section below,
+  // sourced from TOOLS, so it appears exactly once in the sidebar.
   const mainNavItems = [
     { name: "Workspace Dashboard", path: "/workspace", icon: LayoutDashboard },
     { name: "History Logs", path: "/history", icon: History, requiresAuth: true },
@@ -29,7 +31,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
-  const isToolActive = (id: string) => location.pathname === `/workspace/${id}`;
+
+  // Matches on prefix so a tool's sub-routes keep it highlighted — /sign/:id
+  // (the designer) must not un-highlight the eSign entry.
+  const isToolActive = (tool: ToolConfig) => {
+    const route = getToolRoute(tool);
+    return location.pathname === route || location.pathname.startsWith(`${route}/`);
+  };
 
   return (
     <>
@@ -44,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       {/* Sidebar Container */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-72 flex-col border-r bg-card/50 backdrop-blur-md pt-0 transition-transform duration-300 md:sticky md:top-16 md:z-0 md:flex md:w-64 md:h-[calc(100vh-4rem)] md:border-r-0 md:bg-transparent md:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-72 flex-col border-r bg-card/50 backdrop-blur-md pt-0 transition-transform duration-300 md:hidden",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -95,13 +103,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </span>
             <nav className="space-y-1 pb-4">
               {TOOLS.map((tool) => {
+                if (tool.requiresAuth && !token) return null;
                 const Icon = tool.icon;
-                const active = isToolActive(tool.id);
+                const active = isToolActive(tool);
 
                 return (
                   <Link
                     key={tool.id}
-                    to={`/workspace/${tool.id}`}
+                    to={getToolRoute(tool)}
                     onClick={onClose}
                     className={cn(
                       "group flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition-all duration-150",

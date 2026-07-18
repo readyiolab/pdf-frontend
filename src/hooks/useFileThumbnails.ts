@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { loadPdfJs } from "./usePdfPreviews";
+import { loadPdfDocument } from "@/lib/pdf";
 
 async function renderPdfFirstPage(file: File): Promise<string | null> {
   try {
-    await loadPdfJs();
-    const pdfjsLib = (window as any).pdfjsLib;
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdf = await loadPdfDocument(arrayBuffer);
     const page = await pdf.getPage(1);
     // Rendered large enough to stay sharp in the grid preview tiles.
     const viewport = page.getViewport({ scale: 0.8 });
@@ -16,6 +14,8 @@ async function renderPdfFirstPage(file: File): Promise<string | null> {
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({ canvasContext: context, viewport }).promise;
+    // Release the worker-side document; the thumbnail is already rasterized.
+    pdf.destroy();
     return canvas.toDataURL("image/jpeg", 0.7);
   } catch (err) {
     console.error("File thumbnail generation error:", err);

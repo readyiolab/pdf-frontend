@@ -8,6 +8,7 @@ import {
   Images,
   Bookmark,
   FileSpreadsheet,
+  FileSignature,
   ScanText,
   type LucideIcon,
 } from "lucide-react";
@@ -25,9 +26,42 @@ export interface ToolConfig {
   accept: string;       // File input accept string
   multiple: boolean;    // Whether multiple files are allowed
   categories: string[];
+  /**
+   * Where the card navigates. Defaults to `/workspace/<id>`.
+   *
+   * Every other tool is a stateless job: upload → queue → download, all driven
+   * by ToolWorkspace from the `id`. E-signature is not — it owns durable
+   * documents, recipients and a multi-session flow, and lives at its own route.
+   * Without this escape hatch its card would land on /workspace/esign and
+   * ToolWorkspace would try to enqueue a job the backend has never heard of.
+   */
+  route?: string;
+  /** Card shows a "Sign in" hint and the route is behind ProtectedRoute. */
+  requiresAuth?: boolean;
+}
+
+/** Resolves a tool's destination. Use this instead of building the URL inline. */
+export function getToolRoute(tool: ToolConfig): string {
+  return tool.route ?? `/workspace/${tool.id}`;
 }
 
 export const TOOLS: ToolConfig[] = [
+  {
+    id: "esign",
+    name: "eSign PDF",
+    desc: "Send documents for legally-binding signature, with a full audit trail.",
+    icon: FileSignature,
+    accent: "bg-blue-50 dark:bg-blue-950/30",
+    accentText: "text-blue-500",
+    gradient: "from-blue-500/10 to-blue-500/5",
+    // Unused — this tool never reaches ToolWorkspace's uploader (see `route`),
+    // which does its own PDF-only validation on the signing dashboard.
+    accept: ".pdf",
+    multiple: false,
+    categories: ["All", "PDF Security"],
+    route: "/sign",
+    requiresAuth: true,
+  },
   {
     id: "merge",
     name: "Merge PDF",

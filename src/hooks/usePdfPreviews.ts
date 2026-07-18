@@ -1,32 +1,15 @@
 import { useState, useEffect } from "react";
+import { loadPdfDocument } from "@/lib/pdf";
+
+// PDF.js now ships with the bundle (see lib/pdf.ts) rather than being fetched
+// from a CDN at runtime. Re-exported here so existing importers keep working.
+export { loadPdfJs } from "@/lib/pdf";
 
 interface PdfPreviewsResult {
   /** One entry per page, in order. null = still rendering that page. */
   previews: (string | null)[];
   isLoading: boolean;
   pageCount: number;
-}
-
-// Ensure PDF.js is loaded once
-let pdfJsLoadPromise: Promise<void> | null = null;
-
-export function loadPdfJs(): Promise<void> {
-  if ((window as any).pdfjsLib) return Promise.resolve();
-  if (pdfJsLoadPromise) return pdfJsLoadPromise;
-
-  pdfJsLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js";
-    script.onload = () => {
-      (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
-      resolve();
-    };
-    script.onerror = () => reject(new Error("Failed to load PDF.js"));
-    document.body.appendChild(script);
-  });
-
-  return pdfJsLoadPromise;
 }
 
 export function usePdfPreviews(file: File | null, maxPages: number = 8): PdfPreviewsResult {
@@ -48,12 +31,8 @@ export function usePdfPreviews(file: File | null, maxPages: number = 8): PdfPrev
 
     const generatePreviews = async () => {
       try {
-        await loadPdfJs();
-        const pdfjsLib = (window as any).pdfjsLib;
-
         const arrayBuffer = await file.arrayBuffer();
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-        const pdf = await loadingTask.promise;
+        const pdf = await loadPdfDocument(arrayBuffer);
 
         if (cancelled) return;
 
@@ -88,6 +67,7 @@ export function usePdfPreviews(file: File | null, maxPages: number = 8): PdfPrev
 
         // All pages render concurrently rather than one-at-a-time.
         await Promise.all(Array.from({ length: numPages }, (_, i) => renderPage(i + 1)));
+        pdf.destroy();
       } catch (err) {
         console.error("PDF preview generation error:", err);
       } finally {

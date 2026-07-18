@@ -76,7 +76,13 @@ async function fetchWithRetry(url: string, options: RequestInit, retries: number
   throw lastError || new Error("Network request failed after multiple retries.");
 }
 
-async function apiFetch(endpoint: string, options: RequestInit = {}) {
+/**
+ * Shared fetch wrapper: attaches the JWT, retries transient network/timeout
+ * failures, and redirects to login on a 401. Exported so feature-specific API
+ * modules (see services/signingApi.ts) reuse this behaviour instead of
+ * reimplementing it.
+ */
+export async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem("saas_jwt_token");
   
   const headers = new Headers(options.headers);

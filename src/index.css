@@ -255,3 +255,32 @@
   background: oklch(0.17 0.015 260 / 80%);
   border-color: oklch(0.26 0.015 260);
 }
+/* ─── PDF text layer ───────────────────────────────────────────────────────── */
+/* Transparent, selectable text positioned over the rendered page canvas (see
+   PdfPage.tsx). The glyphs the user sees are painted on the canvas; these spans
+   exist only so text can be selected and search hits highlighted. */
+
+.pdf-text-layer {
+  /* Selection must paint over the transparent text, not behind the canvas. */
+  z-index: 1;
+  line-height: 1;
+  /* Spans are absolutely positioned in device pixels by the renderer, so the
+     layer itself must not introduce any of its own text sizing. */
+  font-size: 1px;
+  transform-origin: 0 0;
+}
+
+.pdf-text-layer > span {
+  cursor: text;
+}
+
+.pdf-text-layer ::selection {
+  background: oklch(0.54 0.22 25 / 30%);
+}
+
+/* The active search hit, distinct from the other (yellow) matches so stepping
+   through results is legible. Set inline by the renderer as a data attribute. */
+.pdf-text-layer > span[data-search-hit="active"] {
+  background: oklch(0.7 0.2 45 / 60%) !important;
+  border-radius: 2px;
+}

@@ -2,7 +2,7 @@ import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
-import { TOOLS } from "@/lib/design-tokens";
+import { TOOLS, getToolRoute } from "@/lib/design-tokens";
 import { ChevronRight, Zap, CheckCircle2, ShieldCheck, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +28,8 @@ export const Home: React.FC = () => {
         </h1>
         
         <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-          All 100% FREE and easy to use! Merge, split, compress, convert, rotate, unlock and watermark PDFs with just a few clicks.
+          Merge, split, compress, convert, rotate and watermark PDFs with just a few clicks — then send them
+          for signature with a complete audit trail. No installs, no plugins.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -67,15 +68,23 @@ export const Home: React.FC = () => {
             <div className="h-12 w-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center mb-4">
               <ShieldCheck className="h-6 w-6" />
             </div>
-            <h3 className="text-lg font-bold mb-2">Maximum Security</h3>
-            <p className="text-sm text-muted-foreground">Your files are encrypted and processed in the cloud. We automatically delete all uploaded files after 1 hour.</p>
+            <h3 className="text-lg font-bold mb-2">Private by Default</h3>
+            {/* This is a retention promise, not marketing — keep it true.
+                Tool files really are swept after JOB_TTL_MINUTES (60), but
+                signing documents deliberately are NOT: they're legal records
+                that live until their owner deletes them. The old blanket
+                "we delete all uploaded files after 1 hour" became false the
+                moment eSign shipped. */}
+            <p className="text-sm text-muted-foreground">Files go straight to private storage and are only ever reachable through short-lived, signed links. Tool files are deleted automatically after 1 hour. Documents you send for signature are kept until you delete them.</p>
           </div>
           <div className="flex flex-col items-center text-center p-6 rounded-2xl bg-card border shadow-sm">
             <div className="h-12 w-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-4">
               <Clock className="h-6 w-6" />
             </div>
             <h3 className="text-lg font-bold mb-2">Lightning Fast</h3>
-            <p className="text-sm text-muted-foreground">Our distributed cloud infrastructure processes your files in seconds, no matter how large they are.</p>
+            {/* "no matter how large they are" was false — PLAN_LIMITS caps
+                uploads at 10MB on FREE and 100MB on PRO. */}
+            <p className="text-sm text-muted-foreground">Heavy work runs on dedicated cloud workers, so most files are processed in seconds while you keep working.</p>
           </div>
         </div>
       </section>
@@ -93,7 +102,7 @@ export const Home: React.FC = () => {
             return (
               <Link
                 key={tool.id}
-                to={`/workspace/${tool.id}`}
+                to={getToolRoute(tool)}
                 className="group relative flex flex-col items-center text-center rounded-2xl border bg-card p-6 shadow-sm transition-all duration-300 hover:shadow-xl hover:border-primary/30 hover:-translate-y-1 animate-fade-in-up"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
@@ -107,8 +116,13 @@ export const Home: React.FC = () => {
                 )}>
                   <Icon className={cn("h-7 w-7", tool.accentText)} />
                 </div>
-                <h3 className="relative text-lg font-bold text-foreground mb-2 group-hover:text-primary transition-colors">
+                <h3 className="relative flex items-center gap-2 text-lg font-bold text-foreground mb-2 group-hover:text-primary transition-colors">
                   {tool.name}
+                  {tool.requiresAuth && !user && (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      Sign in
+                    </span>
+                  )}
                 </h3>
                 <p className="relative text-sm text-muted-foreground leading-relaxed">
                   {tool.desc}
