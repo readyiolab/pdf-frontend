@@ -19,34 +19,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(localStorage.getItem("saas_jwt_token"));
   const [loading, setLoading] = useState(true);
 
-  // Refresh profile details on mount if we have a token
+  // Bootstrap ONCE on mount: a returning user with a stored token needs their
+  // profile fetched. Deliberately empty deps — keying this on `token` (as it
+  // used to) meant every login re-triggered a second getProfile round trip on
+  // top of the login response we already had, and left `loading` stuck true
+  // through that whole extra request, so login FELT slow. Login now sets the
+  // user directly and this never re-runs.
   useEffect(() => {
-    const initAuth = async () => {
-      if (token) {
-        try {
-          const data = await apiService.getProfile();
-          setUser(data.user);
-        } catch (err) {
-          console.error("Auth initialization failed:", err);
-          // Token expired or invalid
-          localStorage.removeItem("saas_jwt_token");
-          setToken(null);
-          setUser(null);
-        }
-      }
+    const stored = localStorage.getItem("saas_jwt_token");
+    if (!stored) {
       setLoading(false);
-    };
+      return;
+    }
+    apiService
+      .getProfile()
+      .then((data) => setUser(data.user))
+      .catch(() => {
+        // Token expired/invalid — clear it so ProtectedRoute redirects cleanly.
+        localStorage.removeItem("saas_jwt_token");
+        setToken(null);
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    initAuth();
-  }, [token]);
+  /**
+   * Applies a fresh auth response, then enriches the profile in the background.
+   *
+   * The login/register/guest endpoints already return the core user (id, email,
+   * name, plan), so the UI can unblock immediately. The fuller profile
+   * (dailyOps counters, recent jobs) is fetched WITHOUT blocking — it fills in a
+   * moment later. This is the difference between login feeling instant and
+   * login waiting on a second, Redis-backed round trip before the page moves.
+   */
+  const applySession = (data: { token: string; user: User }) => {
+    localStorage.setItem("saas_jwt_token", data.token);
+    setToken(data.token);
+    setUser(data.user);
+    setLoading(false);
+    // Fire-and-forget: enrich with dailyOps/jobs; a failure here is harmless.
+    apiService.getProfile().then((full) => setUser(full.user)).catch(() => undefined);
+  };
 
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const data = await apiService.login(email, password);
-      localStorage.setItem("saas_jwt_token", data.token);
-      setToken(data.token);
-      setUser(data.user);
+      applySession(await apiService.login(email, password));
     } catch (err) {
       setLoading(false);
       throw err;
@@ -56,10 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (email: string, name: string, password: string) => {
     setLoading(true);
     try {
-      const data = await apiService.register(email, name, password);
-      localStorage.setItem("saas_jwt_token", data.token);
-      setToken(data.token);
-      setUser(data.user);
+      applySession(await apiService.register(email, name, password));
     } catch (err) {
       setLoading(false);
       throw err;
@@ -89,10 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       // Real anonymous session issued by the server (no weak generated password).
-      const data = await apiService.guestLogin();
-      localStorage.setItem("saas_jwt_token", data.token);
-      setToken(data.token);
-      setUser(data.user);
+      applySession(await apiService.guestLogin());
     } catch (err) {
       setLoading(false);
       throw err;

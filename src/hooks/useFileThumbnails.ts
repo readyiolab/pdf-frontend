@@ -1,25 +1,37 @@
 import { useEffect, useRef, useState } from "react";
 import { loadPdfDocument } from "@/lib/pdf";
 
+/**
+ * Target width for a grid thumbnail, in device pixels. The tiles display around
+ * 150 CSS px, so ~300px covers HiDPI without rendering a full-size page — the
+ * old `scale: 0.8` rasterized a ~475px canvas per file, which on a multi-file
+ * selection was needless work that slowed every thumbnail down.
+ */
+const THUMB_TARGET_WIDTH = 300;
+
 async function renderPdfFirstPage(file: File): Promise<string | null> {
+  let pdf: Awaited<ReturnType<typeof loadPdfDocument>> | null = null;
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await loadPdfDocument(arrayBuffer);
+    pdf = await loadPdfDocument(arrayBuffer);
     const page = await pdf.getPage(1);
-    // Rendered large enough to stay sharp in the grid preview tiles.
-    const viewport = page.getViewport({ scale: 0.8 });
+    // Scale to a fixed thumbnail width rather than a fixed zoom, so a large page
+    // and a small page both render to the same cheap size.
+    const baseWidth = page.getViewport({ scale: 1 }).width;
+    const viewport = page.getViewport({ scale: THUMB_TARGET_WIDTH / baseWidth });
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) return null;
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     await page.render({ canvasContext: context, viewport }).promise;
-    // Release the worker-side document; the thumbnail is already rasterized.
-    pdf.destroy();
     return canvas.toDataURL("image/jpeg", 0.7);
   } catch (err) {
     console.error("File thumbnail generation error:", err);
     return null;
+  } finally {
+    // Release the worker-side document even if rendering threw.
+    pdf?.destroy();
   }
 }
 

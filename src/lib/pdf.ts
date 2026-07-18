@@ -1,24 +1,27 @@
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
+// The worker is INLINED into the bundle (base64) and instantiated as a real
+// Worker, rather than emitted as a separate `pdf.worker.mjs` file.
+import PdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker&inline";
 
 /**
  * Central PDF.js setup.
  *
- * Previously PDF.js was pulled from a CDN by injecting a <script> tag at
- * runtime (see the old loadPdfJs). That was workable for throwaway thumbnails
- * but not for the signing module:
- *   - a third-party CDN outage silently broke rendering;
- *   - the version was unpinned against what the app was built with;
- *   - there were no types, so every call site was `(window as any)`;
- *   - a blocked CDN (offline, strict CSP, corporate proxy) meant no viewer at all.
+ * ── Why the worker is inlined, not a separate file ──────────────────────────
+ * The previous setup pointed `workerSrc` at a Vite-emitted `pdf.worker-*.mjs`
+ * file. That works in dev, but many static hosts (nginx without an `.mjs` MIME
+ * mapping, and several managed platforms) serve `.mjs` as
+ * `application/octet-stream`. Browsers enforce strict MIME checking for module
+ * scripts and REFUSE to load it — PDF.js then silently falls back to its
+ * "fake worker", parsing PDFs on the main thread. That is exactly the
+ * "Setting up fake worker" warning and the ~13s freeze: rendering that belongs
+ * on a background thread blocks the UI instead.
  *
- * The worker is now bundled by Vite from the installed package, so it is
- * version-locked to the library and served from our own origin.
+ * Inlining the worker (Vite's `?worker&inline`) turns it into a blob created at
+ * runtime, so there is NO separate file for a host to mis-serve and no MIME
+ * dependency at all. `workerPort` hands PDF.js the ready Worker instance.
  */
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.mjs",
-  import.meta.url
-).toString();
+pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 export { pdfjsLib };
 export type { PDFDocumentProxy, PDFPageProxy, RenderTask };

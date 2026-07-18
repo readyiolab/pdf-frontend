@@ -18,6 +18,13 @@ export interface SigningStats {
   byStatus: Record<SignDocumentStatus, number>;
   total: number;
   completionRate: number;
+  quota: {
+    used: number;
+    limit: number;
+    remaining: number;
+    resetsAt: string | null;
+    plan: "FREE" | "PRO";
+  };
 }
 
 /**
@@ -143,8 +150,69 @@ export const signingApi = {
       body: JSON.stringify({ fields }),
     }),
 
+  // --- Sending & tracking ---
+
+  /** Sends the document for signature. Mints per-recipient links and emails them. */
+  send: (documentId: string): Promise<SendResult> =>
+    apiFetch(`/documents/${documentId}/send`, { method: "POST" }),
+
+  /** Re-emails one recipient's invitation (a manual reminder). */
+  resend: (documentId: string, recipientId: string): Promise<{ documentId: string; notified: NotifyResult[] }> =>
+    apiFetch(`/documents/${documentId}/recipients/${recipientId}/resend`, { method: "POST" }),
+
+  /** Per-signer progress, version list, and integrity info for the tracker. */
+  getStatus: (documentId: string): Promise<DocumentStatus> =>
+    apiFetch(`/documents/${documentId}/status`, { method: "GET" }),
+
+  /** Short-lived signed URL to download the completed (signed) document. */
+  getDownloadUrl: (documentId: string, version?: number): Promise<{ url: string }> =>
+    apiFetch(`/documents/${documentId}/download${version ? `?version=${version}` : ""}`, { method: "GET" }),
+
+  /** Short-lived signed URL to download the certificate of completion. */
+  getCertificateUrl: (documentId: string): Promise<{ url: string }> =>
+    apiFetch(`/documents/${documentId}/certificate`, { method: "GET" }),
+
   // --- Audit ---
 
   getAudit: (documentId: string, page = 1, limit = 50): Promise<Paginated<SignAuditEntry>> =>
     apiFetch(`/documents/${documentId}/audit?page=${page}&limit=${limit}`, { method: "GET" }),
 };
+
+export interface NotifyResult {
+  recipientId: string;
+  email: string;
+  delivered: boolean;
+  error?: string;
+}
+
+export interface SendResult {
+  documentId: string;
+  status: string;
+  notified: NotifyResult[];
+}
+
+export interface DocumentVersionInfo {
+  version: number;
+  sha256: string | null;
+  label: string | null;
+  fileSize: number;
+  digitallySigned: boolean;
+  selfSignedCert: boolean;
+  tsaTimestamp: string | null;
+  createdAt: string;
+}
+
+export interface DocumentStatus {
+  id: string;
+  title: string;
+  status: SignDocumentStatus;
+  flowType: "SEQUENTIAL" | "PARALLEL";
+  sentAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
+  originalHash: string | null;
+  currentVersion: number;
+  progress: { signed: number; total: number; fieldsFilled: number; fieldsTotal: number };
+  recipients: SignRecipient[];
+  versions: DocumentVersionInfo[];
+}

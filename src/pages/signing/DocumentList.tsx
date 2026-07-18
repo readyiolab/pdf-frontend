@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   CheckCircle2,
   Clock,
   FileSignature,
@@ -170,10 +171,21 @@ export default function DocumentList() {
           <StatCard label="Awaiting signature" value={stats.byStatus.SENT} />
           <StatCard label="Completed" value={stats.byStatus.COMPLETED} />
           <StatCard
-            label="Completion rate"
-            value={`${stats.completionRate}%`}
-            hint="of documents sent"
+            label="Sends left this month"
+            value={`${stats.quota.remaining} / ${stats.quota.limit}`}
+            hint={stats.quota.plan === "FREE" ? "Upgrade to PRO for more" : "rolling 30 days"}
           />
+        </div>
+      )}
+
+      {/* Gentle heads-up when the free allowance is running out — better than a
+          surprise 403 mid-send. */}
+      {stats && stats.quota.plan === "FREE" && stats.quota.remaining <= 1 && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          {stats.quota.remaining === 0
+            ? "You've used all your free sends this month. Upgrade to PRO to send more documents for signature."
+            : "You have 1 free send left this month. Upgrade to PRO for more."}
         </div>
       )}
 

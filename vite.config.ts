@@ -61,4 +61,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // The pdf chunk is deliberately large: the PDF.js worker is base64-inlined
+    // into it (see lib/pdf.ts) so no host can mis-serve a separate .mjs worker.
+    // It is lazy-loaded (only on a PDF/signing view) and cached, so this is a
+    // known, accepted cost — raise the warning threshold rather than see a
+    // scary (but harmless) size warning on every production build.
+    chunkSizeWarningLimit: 2000,
+  },
 })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Check, CloudOff, Loader2, Redo2, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, CloudOff, Loader2, Redo2, Send, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ import { PageFieldOverlay } from "@/components/signing/designer/PageFieldOverlay
 import { PropertiesPanel } from "@/components/signing/designer/PropertiesPanel";
 import { RecipientPanel } from "@/components/signing/designer/RecipientPanel";
 import { useFieldDesigner } from "@/components/signing/designer/useFieldDesigner";
+import { SendDialog } from "@/components/signing/send/SendDialog";
+import { StatusTracker } from "@/components/signing/send/StatusTracker";
 
 function SaveIndicator({ state }: { state: ReturnType<typeof useFieldDesigner>["saveState"] }) {
   const map = {
@@ -50,10 +52,12 @@ export default function DocumentEditor() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showSend, setShowSend] = useState(false);
 
   // Once sent, placement is frozen — see assertDraft on the API side. The UI
   // mirrors that rule rather than letting the user edit into a 409.
   const readOnly = document?.status !== "DRAFT";
+  const isDraft = document?.status === "DRAFT";
 
   const initialFields = useMemo(() => document?.fields ?? [], [document]);
   const designer = useFieldDesigner(id, initialFields, !readOnly);
@@ -168,6 +172,37 @@ export default function DocumentEditor() {
 
   const unassignedCount = designer.fields.filter((f) => !f.recipientId).length;
 
+  /**
+   * Why the document can't be sent yet, in plain language — or null when it can.
+   * Mirrors the backend's /send preconditions so the user is told up front
+   * rather than hitting a 400 after clicking. The order matters: report the
+   * first thing they need to fix, not all of them at once.
+   */
+  const sendBlockedReason = useMemo(() => {
+    const signers = recipients.filter((r) => r.role === "SIGNER" || r.role === "APPROVER");
+    const withoutFields = signers.filter((r) => (fieldCountByRecipient.get(r.id) ?? 0) === 0);
+    const sms = recipients.filter((r) => r.authMethod === "SMS_OTP");
+
+    if (recipients.length === 0) return "Add at least one recipient first.";
+    if (signers.length === 0) return "Add at least one signer or approver.";
+    if (withoutFields.length > 0)
+      return `Place at least one field for ${withoutFields.map((r) => r.name).join(", ")}.`;
+    if (unassignedCount > 0)
+      return `${unassignedCount} field${unassignedCount === 1 ? " is" : "s are"} unassigned — assign or delete ${unassignedCount === 1 ? "it" : "them"}.`;
+    if (sms.length > 0)
+      return `SMS verification isn't available yet — switch ${sms.map((r) => r.name).join(", ")} to email.`;
+    return null;
+  }, [recipients, fieldCountByRecipient, unassignedCount]);
+
+  const openSend = useCallback(async () => {
+    // Flush any pending field edits so the server sends the current design, not
+    // the last autosaved state.
+    if (designer.saveState === "dirty" || designer.saveState === "saving") {
+      await designer.save();
+    }
+    setShowSend(true);
+  }, [designer]);
+
   const renderPageOverlay = useCallback(
     (pageNumber: number, size: { width: number; height: number }, scale: number) => (
       <PageFieldOverlay
@@ -272,58 +307,105 @@ export default function DocumentEditor() {
             </Tooltip>
           </div>
         )}
+
+        {isDraft &&
+          (sendBlockedReason ? (
+            // Disabled buttons don't fire hover events, so the tooltip wraps a
+            // span — otherwise the user can't discover WHY they can't send.
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0}>
+                  <Button disabled className="pointer-events-none">
+                    <Send />
+                    Send
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{sendBlockedReason}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button onClick={openSend}>
+              <Send />
+              Send for signature
+            </Button>
+          ))}
       </header>
 
-      {/* --- Workspace --- */}
-      <div className="flex min-h-0 flex-1">
-        <div className="flex w-52 shrink-0 flex-col overflow-hidden border-r border-border bg-card">
-          <RecipientPanel
-            documentId={id}
-            recipients={recipients}
-            flowType={flowType}
-            activeRecipientId={activeRecipientId}
-            readOnly={readOnly}
-            fieldCountByRecipient={fieldCountByRecipient}
-            onRecipientsChange={setRecipients}
-            onFlowTypeChange={handleFlowTypeChange}
-            onActiveChange={setActiveRecipientId}
-            onRecipientRemoved={designer.clearRecipient}
-          />
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <FieldPalette
-              activeRecipient={recipients.find((r) => r.id === activeRecipientId)}
+      {/* --- Body --- */}
+      {isDraft ? (
+        // DRAFT: the full designer (place fields, assign recipients).
+        <div className="flex min-h-0 flex-1">
+          <div className="flex w-52 shrink-0 flex-col overflow-hidden border-r border-border bg-card">
+            <RecipientPanel
+              documentId={id}
+              recipients={recipients}
+              flowType={flowType}
+              activeRecipientId={activeRecipientId}
               readOnly={readOnly}
-              onQuickAdd={handleQuickAdd}
+              fieldCountByRecipient={fieldCountByRecipient}
+              onRecipientsChange={setRecipients}
+              onFlowTypeChange={handleFlowTypeChange}
+              onActiveChange={setActiveRecipientId}
+              onRecipientRemoved={designer.clearRecipient}
             />
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <FieldPalette
+                activeRecipient={recipients.find((r) => r.id === activeRecipientId)}
+                readOnly={readOnly}
+                onQuickAdd={handleQuickAdd}
+              />
+            </div>
           </div>
-        </div>
 
-        <PdfViewer
-          ref={viewerRef}
-          source={fileUrl}
-          className="flex-1"
-          renderPageOverlay={renderPageOverlay}
-          pagesWithFields={designer.pagesWithFields}
-          onPageChange={setCurrentPage}
-          onPageCountChange={(count) => {
-            // The server stores an advisory page count from upload; correct it
-            // once pdf.js has authoritatively parsed the file.
-            if (document.pageCount !== count) {
-              setDocument((d) => (d ? { ...d, pageCount: count } : d));
-            }
+          <PdfViewer
+            ref={viewerRef}
+            source={fileUrl}
+            className="flex-1"
+            renderPageOverlay={renderPageOverlay}
+            pagesWithFields={designer.pagesWithFields}
+            onPageChange={setCurrentPage}
+            onPageCountChange={(count) => {
+              // The server stores an advisory page count from upload; correct it
+              // once pdf.js has authoritatively parsed the file.
+              if (document.pageCount !== count) {
+                setDocument((d) => (d ? { ...d, pageCount: count } : d));
+              }
+            }}
+          />
+
+          <PropertiesPanel
+            selected={designer.selectedFields}
+            recipients={recipients}
+            readOnly={readOnly}
+            onUpdate={designer.updateField}
+            onDuplicate={designer.duplicateSelection}
+            onDelete={designer.deleteSelection}
+            onToggleLock={designer.toggleLock}
+          />
+        </div>
+      ) : (
+        // SENT / COMPLETED / DECLINED: the tracker replaces the designer — there
+        // is nothing left to design, only progress to watch and results to fetch.
+        <div className="min-h-0 flex-1 overflow-hidden bg-muted/30">
+          <StatusTracker documentId={id} />
+        </div>
+      )}
+
+      {showSend && document && (
+        <SendDialog
+          documentId={id}
+          recipients={recipients}
+          flowType={flowType}
+          fieldCountByRecipient={fieldCountByRecipient}
+          onClose={() => setShowSend(false)}
+          onFlowTypeChange={handleFlowTypeChange}
+          onSent={() => {
+            setShowSend(false);
+            // Flip to SENT so the body switches to the tracker without a reload.
+            setDocument((d) => (d ? { ...d, status: "SENT" } : d));
           }}
         />
-
-        <PropertiesPanel
-          selected={designer.selectedFields}
-          recipients={recipients}
-          readOnly={readOnly}
-          onUpdate={designer.updateField}
-          onDuplicate={designer.duplicateSelection}
-          onDelete={designer.deleteSelection}
-          onToggleLock={designer.toggleLock}
-        />
-      </div>
+      )}
     </div>
   );
 }
