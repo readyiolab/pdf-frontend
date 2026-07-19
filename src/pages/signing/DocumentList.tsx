@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { loadPdfDocument } from "@/lib/pdf";
 import { signingApi, type SigningStats } from "@/services/signingApi";
 import { SIGNING_LIMITS, type SignDocumentStatus, type SignDocumentSummary } from "@/lib/signing/types";
+import { ESignHowItWorks } from "@/components/signing/ESignHowItWorks";
 
 const STATUS_TABS: { value: SignDocumentStatus | "ALL"; label: string }[] = [
   { value: "ALL", label: "All" },
@@ -163,6 +164,10 @@ export default function DocumentList() {
           {isUploading ? `Uploading ${uploadProgress}%` : "New document"}
         </Button>
       </div>
+
+      {/* What e-signing is and who can sign — full card until the user has sent
+          their first document, then a dismissible one-liner. */}
+      <ESignHowItWorks forceOpen={!isLoading && documents.length === 0 && !search && status === "ALL"} />
 
       {/* --- Stats --- */}
       {stats && (

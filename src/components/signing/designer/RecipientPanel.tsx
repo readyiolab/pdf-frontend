@@ -149,6 +149,11 @@ export function RecipientPanel({
               <SelectItem value="PARALLEL">Sign in any order</SelectItem>
             </SelectContent>
           </Select>
+          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+            {flowType === "SEQUENTIAL"
+              ? "Each person is emailed only after the one before them signs — the numbers show the order."
+              : "Everyone is emailed at once and can sign whenever they like."}
+          </p>
         </div>
       )}
 

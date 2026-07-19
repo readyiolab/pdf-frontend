@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   CheckCircle2,
+  ChevronDown,
   Clock,
   Download,
   Eye,
   FileCheck,
+  History,
   Mail,
   RotateCw,
   ShieldCheck,
@@ -17,6 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { signingApi, type DocumentStatus } from "@/services/signingApi";
 import type { SignRecipientStatus } from "@/lib/signing/types";
+import { AuditTrail } from "./AuditTrail";
 
 /** Presentation per recipient status. */
 const STATUS: Record<SignRecipientStatus, { label: string; icon: typeof Clock; className: string }> = {
@@ -57,6 +60,7 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [resending, setResending] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<"doc" | "cert" | null>(null);
+  const [showActivity, setShowActivity] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -125,7 +129,7 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
   const isDeclined = status.status === "DECLINED";
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 overflow-y-auto p-4 sm:p-6">
+    <div className="mx-auto h-full max-w-2xl space-y-5 overflow-y-auto p-4 sm:p-6">
       {/* --- Headline --- */}
       <div
         className={cn(
@@ -270,6 +274,32 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
           Each person's link is private and was emailed directly to them. Use the reminder button to email
           it again.
         </p>
+      </div>
+
+      {/* --- Activity log: who did what, from where, on which device --- */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowActivity((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+          aria-expanded={showActivity}
+        >
+          <span className="flex items-center gap-1.5">
+            <History className="size-3.5" />
+            Activity &amp; access log
+          </span>
+          <ChevronDown className={cn("size-4 transition-transform", showActivity && "rotate-180")} />
+        </button>
+        {showActivity && (
+          <div className="mt-2 rounded-xl border border-border bg-card p-4">
+            <AuditTrail documentId={documentId} />
+            <p className="mt-1 border-t border-border pt-2 text-[10px] leading-relaxed text-muted-foreground">
+              IP address, approximate location, and device are recorded server-side at the moment of each
+              action. Location needs a geo-aware proxy (e.g. Cloudflare) — without one, only the IP and device
+              are shown.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

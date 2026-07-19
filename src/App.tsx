@@ -19,6 +19,9 @@ const Register = lazy(() => import("./pages/Register"));
 const DocumentList = lazy(() => import("./pages/signing/DocumentList"));
 const DocumentEditor = lazy(() => import("./pages/signing/DocumentEditor"));
 const SignDocument = lazy(() => import("./pages/signing/SignDocument"));
+const SummarizePdf = lazy(() => import("./pages/ai/SummarizePdf"));
+const ExplainPdf = lazy(() => import("./pages/ai/ExplainPdf"));
+const ChatPdf = lazy(() => import("./pages/ai/ChatPdf"));
 
 // Custom loading fallback
 const PageLoader = () => (
@@ -104,6 +107,23 @@ function App() {
               <Route path="sign/:id" element={
                 <ProtectedRoute>
                   <DocumentEditor />
+                </ProtectedRoute>
+              } />
+
+              {/* AI — requires a real account (calls cost money, quota-bounded). */}
+              <Route path="ai/summarize" element={
+                <ProtectedRoute>
+                  <SummarizePdf />
+                </ProtectedRoute>
+              } />
+              <Route path="ai/explain" element={
+                <ProtectedRoute>
+                  <ExplainPdf />
+                </ProtectedRoute>
+              } />
+              <Route path="ai/chat" element={
+                <ProtectedRoute>
+                  <ChatPdf />
                 </ProtectedRoute>
               } />
               
