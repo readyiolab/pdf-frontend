@@ -42,10 +42,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const applySession = useCallback((data: { token: string; user: User }) => {
     localStorage.setItem("saas_jwt_token", data.token);
     setToken(data.token);
-    setUser(data.user);
+    setUser({
+      ...data.user,
+      emailVerified: Boolean(data.user.emailVerified),
+    });
     setLoading(false);
-    // Refresh profile in background — do not block the auth UI.
-    void apiService.getProfile().then((full) => setUser(full.user)).catch(() => undefined);
+    // Background refresh — never downgrade a just-verified session if profile races.
+    void apiService
+      .getProfile()
+      .then((full) => {
+        setUser((prev) => ({
+          ...full.user,
+          emailVerified: Boolean(full.user.emailVerified) || Boolean(prev?.emailVerified),
+        }));
+      })
+      .catch(() => undefined);
   }, []);
 
   // Important: do NOT flip global `loading` during login/register/guest.

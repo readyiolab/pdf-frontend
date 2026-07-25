@@ -1,8 +1,15 @@
+import { useEffect, useRef, useState } from "react";
 import { Navigate, Link } from "react-router-dom";
 import { Mail } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+
+function isVerified(user: { emailVerified?: boolean | number | string } | null | undefined): boolean {
+  if (!user) return false;
+  const v = user.emailVerified as unknown;
+  return v === true || v === 1 || v === "1";
+}
 
 /** Requires a logged-in session. */
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -24,9 +31,23 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * Workspace and basic PDF tools stay available without verification.
  */
 export function VerifiedRoute({ children }: { children: React.ReactNode }) {
-  const { token, user, loading } = useAuth();
+  const { token, user, loading, refreshProfile } = useAuth();
+  const [checking, setChecking] = useState(false);
+  const refreshed = useRef(false);
 
-  if (loading) {
+  // If the gate is about to block, re-fetch profile once (e.g. user verified in another tab).
+  useEffect(() => {
+    if (!token || loading || !user || user.isGuest || isVerified(user) || refreshed.current) {
+      return;
+    }
+    refreshed.current = true;
+    setChecking(true);
+    void refreshProfile()
+      .catch(() => undefined)
+      .finally(() => setChecking(false));
+  }, [token, loading, user, refreshProfile]);
+
+  if (loading || checking) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <Spinner className="size-5" />
@@ -54,7 +75,7 @@ export function VerifiedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user && user.emailVerified === false) {
+  if (user && !isVerified(user)) {
     return (
       <div className="mx-auto flex max-w-md flex-col items-center gap-4 px-4 py-16 text-center">
         <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10">

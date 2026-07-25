@@ -88,7 +88,7 @@ export const Profile: React.FC = () => {
             </div>
           </div>
 
-          {user.emailVerified === false && !user.isGuest && (
+          {user.emailVerified !== true && user.emailVerified !== 1 && !user.isGuest && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 shadow-sm">
               <h2 className="mb-1 text-base font-semibold text-foreground">Email not verified yet</h2>
               <p className="mb-3 text-sm text-muted-foreground">

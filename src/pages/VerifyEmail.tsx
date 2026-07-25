@@ -15,7 +15,8 @@ import { Spinner } from "@/components/ui/spinner";
 export default function VerifyEmailPage() {
   const [params] = useSearchParams();
   const tokenFromLink = params.get("token");
-  const { user, token, resendVerification, applyVerifiedSession, loading: authLoading } = useAuth();
+  const { user, token, resendVerification, applyVerifiedSession, refreshProfile, loading: authLoading } =
+    useAuth();
   const navigate = useNavigate();
 
   const [status, setStatus] = useState<"idle" | "verifying" | "success" | "error">(
@@ -32,10 +33,13 @@ export default function VerifyEmailPage() {
         const data = await apiService.verifyEmail(tokenFromLink);
         if (cancelled) return;
         applyVerifiedSession(data);
+        // Ensure profile reflects DB (clears any stale unverified client state).
+        await refreshProfile().catch(() => undefined);
+        if (cancelled) return;
         setStatus("success");
         setMessage("Your email is verified. You're all set.");
         toast.success("Email verified!");
-        setTimeout(() => navigate("/workspace", { replace: true }), 1500);
+        setTimeout(() => navigate("/workspace", { replace: true }), 1200);
       } catch (err: any) {
         if (cancelled) return;
         setStatus("error");
@@ -45,7 +49,7 @@ export default function VerifyEmailPage() {
     return () => {
       cancelled = true;
     };
-  }, [tokenFromLink, applyVerifiedSession, navigate]);
+  }, [tokenFromLink, applyVerifiedSession, refreshProfile, navigate]);
 
   useEffect(() => {
     if (!tokenFromLink && user?.emailVerified) {
