@@ -9,7 +9,10 @@ export const AppLayout: React.FC = () => {
 
   const isHome = location.pathname === "/";
   const isEsignEditor = /^\/sign\/[^/]+$/.test(location.pathname);
-  const isFullBleed = isHome || isEsignEditor;
+  const isAiChat = location.pathname === "/ai/chat";
+  const isFullBleed = isHome || isEsignEditor || isAiChat;
+  const hideChrome = isEsignEditor; // keep navbar on chat; hide footer only for immersive panes
+  const hideFooter = isEsignEditor || isAiChat;
 
   return (
     <div
@@ -26,21 +29,21 @@ export const AppLayout: React.FC = () => {
         </div>
       )}
 
-      {!isEsignEditor && <Navbar />}
+      {!hideChrome && <Navbar />}
 
-      <div className={`flex flex-1 mx-auto w-full ${isEsignEditor ? "max-w-none" : "max-w-[1600px]"}`}>
-        <main className="flex-1 flex flex-col min-w-0">
+      <div className={cn("mx-auto flex w-full flex-1", isFullBleed ? "max-w-none" : "max-w-[1600px]")}>
+        <main className="flex min-w-0 flex-1 flex-col">
           <div
             className={
               isFullBleed
-                ? "flex-1 w-full min-h-0"
-                : "flex-1 px-4 py-8 sm:px-6 md:px-8 lg:px-10 max-w-7xl mx-auto w-full"
+                ? "flex min-h-0 w-full flex-1"
+                : "mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 md:px-8 lg:px-10"
             }
           >
             <Outlet />
           </div>
 
-          {!isEsignEditor && <Footer />}
+          {!hideFooter && <Footer />}
         </main>
       </div>
     </div>
