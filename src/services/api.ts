@@ -47,35 +47,36 @@ async function fetchWithRetry(url: string, options: RequestInit, retries: number
         throw new Error("You appear to be offline. Please check your internet connection.");
       }
 
-      // Add AbortController for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-      
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      return response;
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+        });
+        return response;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     } catch (err: any) {
       lastError = err;
       if (err.name === "AbortError") {
-        lastError = new Error("Request timed out. Please try again.");
+        // Do not retry timeouts — that turns a 15s wait into ~45s of pain.
+        throw new Error("Request timed out. Please try again.");
       }
-      
-      // Only retry on network errors (fetch throws TypeError on network failure) or 5xx server errors
-      if (err.name !== "TypeError" && err.name !== "AbortError") {
+
+      // Only retry transient network failures
+      if (err.name !== "TypeError") {
         throw err;
       }
-      
-      // Exponential backoff
+
       if (i < retries - 1) {
-        await new Promise(res => setTimeout(res, Math.pow(2, i) * 1000));
+        await new Promise((res) => setTimeout(res, Math.pow(2, i) * 1000));
       }
     }
   }
-  
+
   throw lastError || new Error("Network request failed after multiple retries.");
 }
 

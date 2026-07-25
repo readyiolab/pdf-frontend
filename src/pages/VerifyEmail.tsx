@@ -126,6 +126,9 @@ export default function VerifyEmailPage() {
         <span className="font-medium text-foreground">{user?.email || "your inbox"}</span>.
         Open it to unlock e-sign, AI tools, and billing.
       </p>
+      <p className="max-w-md text-xs text-muted-foreground">
+        Check spam/junk if you don’t see it within a minute. The link expires in 24 hours.
+      </p>
       <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
         <Button onClick={handleResend} disabled={resending || !token}>
           {resending ? <Spinner className="mr-2 size-4" /> : null}
@@ -135,7 +138,7 @@ export default function VerifyEmailPage() {
           <Link to="/workspace">Continue to workspace</Link>
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground pt-2">
+      <p className="pt-2 text-xs text-muted-foreground">
         Basic PDF tools work before verification. Protected features need a verified email.
       </p>
     </div>

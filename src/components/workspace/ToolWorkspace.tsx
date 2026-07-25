@@ -642,10 +642,11 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
               )}
             >
               {isProcessing ? (
-                <>
-                  <Spinner className="h-4 w-4 text-primary-foreground" />
-                  {currentStep === "upload" ? "Uploading..." : currentStep === "queue" ? "Queueing..." : "Processing..."}
-                </>
+                currentStep === "upload"
+                  ? "Uploading…"
+                  : currentStep === "queue"
+                    ? "Queued…"
+                    : "Processing…"
               ) : (
                 <>
                   {tool.name}

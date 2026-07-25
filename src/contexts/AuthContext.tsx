@@ -44,37 +44,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(data.token);
     setUser(data.user);
     setLoading(false);
-    apiService.getProfile().then((full) => setUser(full.user)).catch(() => undefined);
+    // Refresh profile in background — do not block the auth UI.
+    void apiService.getProfile().then((full) => setUser(full.user)).catch(() => undefined);
   }, []);
 
+  // Important: do NOT flip global `loading` during login/register/guest.
+  // That was painting a second full-page spinner over the auth modal.
+
   const login = useCallback(async (email: string, password: string) => {
-    setLoading(true);
-    try {
-      applySession(await apiService.login(email, password));
-    } catch (err) {
-      setLoading(false);
-      throw err;
-    }
+    applySession(await apiService.login(email, password));
   }, [applySession]);
 
   const register = useCallback(async (email: string, name: string, password: string) => {
-    setLoading(true);
-    try {
-      applySession(await apiService.register(email, name, password));
-    } catch (err) {
-      setLoading(false);
-      throw err;
-    }
+    applySession(await apiService.register(email, name, password));
   }, [applySession]);
 
   const googleLogin = useCallback(async (data: { credential: string }) => {
-    setLoading(true);
-    try {
-      applySession(await apiService.googleLogin(data));
-    } catch (err) {
-      setLoading(false);
-      throw err;
-    }
+    applySession(await apiService.googleLogin(data));
   }, [applySession]);
 
   const logout = useCallback(() => {
@@ -91,13 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const guestSession = useCallback(async () => {
-    setLoading(true);
-    try {
-      applySession(await apiService.guestLogin());
-    } catch (err) {
-      setLoading(false);
-      throw err;
-    }
+    applySession(await apiService.guestLogin());
   }, [applySession]);
 
   const resendVerification = useCallback(async () => {

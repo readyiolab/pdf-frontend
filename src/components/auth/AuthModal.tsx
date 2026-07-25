@@ -20,25 +20,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop Overlay */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <div
-        className="fixed inset-0 bg-background/80 backdrop-blur-md transition-opacity animate-fade-in"
+        className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity"
         onClick={onClose}
+        aria-hidden
       />
 
-      {/* Modal Card Container */}
-      <div className="relative w-full max-w-md rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-2xl z-50 animate-scale-in">
-        {/* Close Button */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative z-50 w-full max-w-md max-h-[min(92dvh,720px)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-5 shadow-2xl sm:p-7"
+      >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 rounded-xl p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-          aria-label="Close modal"
+          className="absolute right-3 top-3 z-10 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Close"
         >
           <X className="size-4" />
         </button>
 
-        {/* Reusable AuthForm */}
         <AuthForm
           mode={mode}
           onSwitchMode={setMode}
@@ -46,7 +48,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             onClose();
             onSuccess?.();
           }}
-          isModal={true}
+          isModal
         />
       </div>
     </div>

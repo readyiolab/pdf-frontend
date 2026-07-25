@@ -66,12 +66,22 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         toast.success("Account created — check your email to verify.");
         finish({ needsVerify: true });
       }
-      setIsLoading(false);
     } catch (err: any) {
-      setIsLoading(false);
       const msg = err.message || `Failed to ${mode === "login" ? "sign in" : "create account"}`;
+      const status = typeof err.status === "number" ? err.status : 0;
+
+      // Already registered → stop spinner and jump to Sign In with email kept.
+      if (mode === "register" && (status === 409 || /already registered/i.test(msg))) {
+        setIsLoading(false);
+        setPassword("");
+        setError("This email is already registered. Sign in instead.");
+        onSwitchMode?.("login");
+        return;
+      }
+
       setError(msg);
-      toast.error(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -85,14 +95,12 @@ export const AuthForm: React.FC<AuthFormProps> = ({
       if (!clientId) {
         setIsLoading(false);
         setError("Google sign-in is not configured. Please use email instead.");
-        toast.error("Google sign-in is not available.");
         return;
       }
 
       if (typeof window === "undefined" || !(window as any).google?.accounts?.id) {
         setIsLoading(false);
         setError("Google sign-in is still loading. Please try again in a moment.");
-        toast.error("Google sign-in is still loading.");
         return;
       }
 
@@ -106,13 +114,12 @@ export const AuthForm: React.FC<AuthFormProps> = ({
           }
           try {
             await googleLogin({ credential: response.credential });
-            setIsLoading(false);
             toast.success("Signed in with Google!");
             finish();
           } catch (err: any) {
-            setIsLoading(false);
             setError(err.message || "Google token verification failed.");
-            toast.error("Google authentication failed.");
+          } finally {
+            setIsLoading(false);
           }
         },
       });
@@ -123,9 +130,8 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         }
       });
     } catch (err: any) {
-      setIsLoading(false);
       setError(err.message || "Google authentication failed.");
-      toast.error("Google sign in failed.");
+      setIsLoading(false);
     }
   };
 
@@ -134,37 +140,41 @@ export const AuthForm: React.FC<AuthFormProps> = ({
     setError("");
     try {
       await guestSession();
-      setIsLoading(false);
       toast.success("Continuing as guest");
       finish();
     } catch {
-      setIsLoading(false);
       setError("Failed to create guest session.");
-      toast.error("Failed to create guest session.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const alreadyRegistered = /already registered/i.test(error);
+
   return (
     <div className="w-full text-left">
-      <div className="mb-6 text-center">
-        <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+      <div className="mb-5 pr-8 text-center sm:mb-6">
+        <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
           {mode === "login" ? "Welcome back" : "Create your account"}
         </h2>
-        <p className="text-sm text-muted-foreground mt-1.5">
+        <p className="mt-1.5 text-sm text-muted-foreground">
           {mode === "login"
             ? "Sign in to access your workspace and documents"
             : "Free PDF tools — verify your email after signing up"}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-muted/60 mb-6 border border-border">
+      <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl border border-border bg-muted/60 p-1">
         <button
           type="button"
-          onClick={() => onSwitchMode?.("login")}
+          onClick={() => {
+            setError("");
+            onSwitchMode?.("login");
+          }}
           className={cn(
-            "py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+            "cursor-pointer rounded-lg py-2 text-xs font-semibold transition-all",
             mode === "login"
-              ? "bg-card text-foreground shadow-xs border border-border"
+              ? "border border-border bg-card text-foreground shadow-xs"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -172,11 +182,14 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => onSwitchMode?.("register")}
+          onClick={() => {
+            setError("");
+            onSwitchMode?.("register");
+          }}
           className={cn(
-            "py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+            "cursor-pointer rounded-lg py-2 text-xs font-semibold transition-all",
             mode === "register"
-              ? "bg-card text-foreground shadow-xs border border-border"
+              ? "border border-border bg-card text-foreground shadow-xs"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -189,7 +202,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         variant="outline"
         onClick={handleGoogleSignIn}
         disabled={isLoading}
-        className="w-full rounded-xl py-5 text-sm font-medium border-border hover:bg-muted/80 flex items-center justify-center gap-2 mb-5 cursor-pointer"
+        className="mb-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border-border py-5 text-sm font-medium hover:bg-muted/80"
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -200,24 +213,40 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         <span>Continue with Google</span>
       </Button>
 
-      <div className="relative flex items-center justify-center mb-5">
+      <div className="relative mb-4 flex items-center justify-center">
         <div className="w-full border-t border-border" />
-        <span className="absolute bg-card px-3 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-          or continue with email
+        <span className="absolute bg-card px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          or email
         </span>
       </div>
 
       {error && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive font-medium">
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
+        <div className="mb-4 rounded-xl border border-destructive/25 bg-destructive/10 p-3 text-xs text-destructive">
+          <div className="flex items-start gap-2.5 font-medium">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <p>{error}</p>
+              {alreadyRegistered && onSwitchMode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError("");
+                    onSwitchMode("login");
+                  }}
+                  className="font-semibold text-primary underline-offset-2 hover:underline"
+                >
+                  Sign in with this email instead
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      <form onSubmit={handleAuthSubmit} className="space-y-4">
+      <form onSubmit={handleAuthSubmit} className="space-y-3.5">
         {mode === "register" && (
           <div>
-            <label className="block text-xs font-semibold text-foreground mb-1.5">Full Name</label>
+            <label className="mb-1.5 block text-xs font-semibold text-foreground">Full Name</label>
             <div className="relative">
               <UserIcon className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
               <input
@@ -227,14 +256,14 @@ export const AuthForm: React.FC<AuthFormProps> = ({
                 placeholder="Jane Doe"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                className="w-full rounded-xl border border-border bg-muted/30 py-2.5 pl-10 pr-4 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
           </div>
         )}
 
         <div>
-          <label className="block text-xs font-semibold text-foreground mb-1.5">Email</label>
+          <label className="mb-1.5 block text-xs font-semibold text-foreground">Email</label>
           <div className="relative">
             <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
             <input
@@ -244,13 +273,13 @@ export const AuthForm: React.FC<AuthFormProps> = ({
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              className="w-full rounded-xl border border-border bg-muted/30 py-2.5 pl-10 pr-4 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="mb-1.5 flex items-center justify-between">
             <label className="block text-xs font-semibold text-foreground">Password</label>
             {mode === "login" && (
               <span className="text-[11px] font-medium text-muted-foreground">
@@ -267,7 +296,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-border bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              className="w-full rounded-xl border border-border bg-muted/30 py-2.5 pl-10 pr-4 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
           {mode === "register" && (
@@ -280,19 +309,19 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         <Button
           type="submit"
           disabled={isLoading}
-          className="w-full rounded-xl py-5 text-sm font-semibold mt-2 cursor-pointer"
+          className="mt-1 w-full cursor-pointer rounded-xl py-5 text-sm font-semibold"
         >
           {isLoading ? <Spinner className="mr-2 size-4" /> : null}
           {mode === "login" ? "Sign in" : "Create free account"}
         </Button>
       </form>
 
-      <div className="mt-4 pt-4 border-t border-border text-center">
+      <div className="mt-4 border-t border-border pt-4 text-center">
         <button
           type="button"
           onClick={handleGuestSignIn}
           disabled={isLoading}
-          className="text-xs font-semibold text-muted-foreground hover:text-foreground inline-flex items-center gap-1 cursor-pointer transition-colors"
+          className="inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
         >
           <span>Continue as guest</span>
           <ArrowRight className="h-3.5 w-3.5" />
@@ -304,11 +333,17 @@ export const AuthForm: React.FC<AuthFormProps> = ({
           <p className="mt-3 text-xs text-muted-foreground">
             {mode === "login" ? (
               <>
-                No account? <Link to="/register" className="text-primary font-semibold">Sign up</Link>
+                No account?{" "}
+                <Link to="/register" className="font-semibold text-primary">
+                  Sign up
+                </Link>
               </>
             ) : (
               <>
-                Already have an account? <Link to="/login" className="text-primary font-semibold">Sign in</Link>
+                Already have an account?{" "}
+                <Link to="/login" className="font-semibold text-primary">
+                  Sign in
+                </Link>
               </>
             )}
           </p>

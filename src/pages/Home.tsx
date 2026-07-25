@@ -59,8 +59,8 @@ export const Home: React.FC = () => {
 
   return (
     <div className="flex w-full flex-col overflow-x-hidden bg-[#F7F9FC] text-slate-900">
-      {/* ── Hero ───────────────────────────────────────────────────────────── */}
-      <section className="relative w-full min-h-[min(100svh,920px)] overflow-hidden">
+      {/* ── Hero (extends under transparent navbar) ────────────────────────── */}
+      <section className="relative w-full min-h-[min(100svh,920px)] overflow-hidden -mt-14 sm:-mt-16">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
@@ -92,7 +92,7 @@ export const Home: React.FC = () => {
           transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
         />
 
-        <div className="relative mx-auto flex min-h-[min(100svh,920px)] max-w-6xl flex-col justify-center px-4 pb-16 pt-14 sm:px-6 sm:pb-20 sm:pt-20 lg:px-8">
+        <div className="relative mx-auto flex min-h-[min(100svh,920px)] max-w-6xl flex-col justify-center px-4 pb-16 pt-24 sm:px-6 sm:pb-20 sm:pt-32 lg:px-8">
           <motion.div
             className="mx-auto max-w-3xl text-center"
             initial={{ opacity: 0, y: 28 }}

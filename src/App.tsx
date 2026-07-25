@@ -6,7 +6,6 @@ import { Spinner } from "./components/ui/spinner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { ProtectedRoute, VerifiedRoute } from "./components/auth/RouteGuards";
-import { Zap } from "lucide-react";
 
 const Home = lazy(() => import("./pages/Home"));
 const Workspace = lazy(() => import("./pages/Workspace"));
@@ -28,15 +27,8 @@ const ChatPdf = lazy(() => import("./pages/ai/ChatPdf"));
 const InfoPage = lazy(() => import("./pages/info/InfoPage"));
 
 const PageLoader = () => (
-  <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 animate-fade-in">
-    <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground/10">
-      <Zap className="h-8 w-8 text-foreground animate-pulse" />
-      <div className="absolute inset-0 rounded-2xl border-2 border-foreground/20 animate-ping" style={{ animationDuration: "3s" }} />
-    </div>
-    <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-      <Spinner className="h-4 w-4" />
-      Loading...
-    </div>
+  <div className="flex min-h-[50vh] items-center justify-center animate-fade-in">
+    <Spinner className="h-6 w-6 text-primary" />
   </div>
 );
 
