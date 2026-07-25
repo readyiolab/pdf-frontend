@@ -24,7 +24,7 @@ import { AuditTrail } from "./AuditTrail";
 
 /** Presentation per recipient status. */
 const STATUS: Record<SignRecipientStatus, { label: string; icon: typeof Clock; className: string }> = {
-  PENDING: { label: "Waiting their turn", icon: Clock, className: "text-muted-foreground" },
+  PENDING: { label: "Not emailed yet", icon: Clock, className: "text-amber-700 dark:text-amber-500" },
   SENT: { label: "Emailed — not opened", icon: Mail, className: "text-blue-600 dark:text-blue-400" },
   VIEWED: { label: "Opened", icon: Eye, className: "text-amber-600 dark:text-amber-500" },
   COMPLETED: { label: "Signed", icon: CheckCircle2, className: "text-emerald-600 dark:text-emerald-500" },
@@ -91,8 +91,19 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
   const handleResend = async (recipientId: string, name: string) => {
     setResending(recipientId);
     try {
-      await signingApi.resend(documentId, recipientId);
-      toast.success(`Reminder sent to ${name}.`);
+      const result = await signingApi.resend(documentId, recipientId);
+      const failed = result.notified?.filter((n) => !n.delivered) ?? [];
+      if (failed.length) {
+        toast.error(
+          failed[0]?.error
+            ? `Couldn't email ${name}: ${failed[0].error}`
+            : `Couldn't email ${name}. Check SMTP settings.`
+        );
+      } else {
+        toast.success(`Invitation emailed to ${name}.`);
+        const data = await signingApi.getStatus(documentId);
+        setStatus(data);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't send the reminder.");
     } finally {
@@ -296,11 +307,13 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
                 : r.status === "VIEWED"
                   ? fmtIST(r.viewedAt)
                   : null;
+            // Include PENDING: if SMTP failed on send, status stays PENDING and
+            // the owner must be able to retry the invite (previously the button
+            // was hidden, so failed emails looked like "waiting their turn").
             const canRemind =
               status.status === "SENT" &&
               r.status !== "COMPLETED" &&
-              r.status !== "DECLINED" &&
-              r.status !== "PENDING";
+              r.status !== "DECLINED";
 
             return (
               <div key={r.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">

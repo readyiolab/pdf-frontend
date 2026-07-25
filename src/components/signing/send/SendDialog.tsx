@@ -51,7 +51,10 @@ export function SendDialog({
       const result = await signingApi.send(documentId);
       const failed = result.notified.filter((n) => !n.delivered);
       if (failed.length) {
-        toast.warning(`Sent, but ${failed.length} email(s) could not be delivered. You can resend from the tracker.`);
+        toast.warning(
+          `Document sent, but ${failed.length} email(s) failed (${failed.map((f) => f.email).join(", ")}). Use Resend in the tracker.`,
+          { duration: 8000 }
+        );
       } else {
         toast.success(
           flowType === "SEQUENTIAL"
