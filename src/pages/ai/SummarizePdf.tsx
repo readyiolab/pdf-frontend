@@ -8,6 +8,7 @@ export default function SummarizePdf() {
       subtitle="Drop in a document and get an instant, faithful summary."
       actionLabel="Summarize"
       accent="from-fuchsia-500/20 to-fuchsia-500/5"
+      tone="fuchsia"
       presets={[
         { id: "concise", label: "Concise", hint: "A few clear sentences" },
         { id: "detailed", label: "Detailed", hint: "Thorough, section by section" },

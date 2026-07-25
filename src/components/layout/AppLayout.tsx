@@ -9,10 +9,11 @@ export const AppLayout: React.FC = () => {
 
   const isHome = location.pathname === "/";
   const isEsignEditor = /^\/sign\/[^/]+$/.test(location.pathname);
-  const isAiChat = location.pathname === "/ai/chat";
-  const isFullBleed = isHome || isEsignEditor || isAiChat;
-  const hideChrome = isEsignEditor; // keep navbar on chat; hide footer only for immersive panes
-  const hideFooter = isEsignEditor || isAiChat;
+  const isAiStudio = location.pathname.startsWith("/ai/");
+  const isToolStudio = /^\/workspace\/[^/]+$/.test(location.pathname);
+  const isFullBleed = isHome || isEsignEditor || isAiStudio || isToolStudio;
+  const hideChrome = isEsignEditor;
+  const hideFooter = isEsignEditor || isAiStudio || isToolStudio;
 
   return (
     <div
@@ -21,7 +22,7 @@ export const AppLayout: React.FC = () => {
         isHome ? "bg-[#F7F9FC]" : "bg-background"
       )}
     >
-      {!isHome && (
+      {!isHome && !isAiStudio && !isToolStudio && (
         <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
           <div className="absolute -top-[8%] left-1/2 h-[520px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,oklch(0.72_0.12_255/0.18),transparent_70%)] blur-2xl" />
           <div className="absolute top-[45%] -right-[10%] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,oklch(0.8_0.06_230/0.12),transparent_70%)] blur-2xl" />
