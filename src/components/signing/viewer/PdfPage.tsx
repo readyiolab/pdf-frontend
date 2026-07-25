@@ -57,11 +57,6 @@ function PdfPageImpl({
     }
 
     let cancelled = false;
-    // PDF.js rejects a second render on the same canvas while one is in flight,
-    // so the in-flight task is cancelled explicitly when inputs change. This
-    // MUST be the RenderTask itself — a wrapping promise has no cancel() and
-    // the failure is silent until the next zoom throws "Cannot use the same
-    // canvas during multiple render() operations".
     let renderTask: RenderTask | null = null;
 
     (async () => {
@@ -79,18 +74,17 @@ function PdfPageImpl({
         if (cancelled) return;
         setIsRendered(true);
 
-        // Text layer: invisible, selectable spans positioned over the canvas.
-        // Needed for text selection and for search highlighting — the canvas
-        // alone is just pixels with no notion of words.
         const textLayer = textLayerRef.current;
         if (textLayer) {
           const textContent = await page.getTextContent();
           if (cancelled) return;
           const viewport = page.getViewport({ scale, rotation });
-          renderTextLayer(textLayer, textContent, viewport, searchTerm);
+          // Pass undefined here — search highlighting is applied in a separate
+          // effect so typing in search doesn't cancel/re-render the canvas.
+          renderTextLayer(textLayer, textContent, viewport, undefined);
+          applySearchHighlight(textLayer, searchTerm);
         }
       } catch (err) {
-        // A cancelled render is expected on scroll/zoom, not an error worth surfacing.
         if (!cancelled && (err as Error)?.name !== "RenderingCancelledException") {
           console.error(`Failed to render page ${pageNumber}`, err);
         }
@@ -102,10 +96,19 @@ function PdfPageImpl({
       try {
         renderTask?.cancel();
       } catch {
-        // Task already settled — nothing to cancel.
+        // Task already settled
       }
     };
-  }, [pdf, pageNumber, scale, rotation, isVisible, searchTerm, onSizeReported]);
+    // searchTerm intentionally omitted — see highlight effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdf, pageNumber, scale, rotation, isVisible, onSizeReported]);
+
+  // Re-apply search highlights without re-rendering the canvas.
+  useEffect(() => {
+    const textLayer = textLayerRef.current;
+    if (!textLayer || !isRendered) return;
+    applySearchHighlight(textLayer, searchTerm);
+  }, [searchTerm, isRendered]);
 
   return (
     <div
@@ -154,16 +157,14 @@ function renderTextLayer(
   container: HTMLDivElement,
   textContent: { items: unknown[] },
   viewport: { transform: number[] },
-  searchTerm?: string
+  _searchTerm?: string
 ): void {
   container.replaceChildren();
-  const term = searchTerm?.trim().toLowerCase();
 
   for (const raw of textContent.items) {
     const item = raw as { str: string; transform: number[]; width: number; height: number };
     if (!item.str) continue;
 
-    // Compose the item's transform with the viewport's to get device coords.
     const tx = pdfjsTransform(viewport.transform, item.transform);
     const fontHeight = Math.hypot(tx[2], tx[3]);
 
@@ -171,23 +172,30 @@ function renderTextLayer(
     span.textContent = item.str;
     span.style.position = "absolute";
     span.style.left = `${tx[4]}px`;
-    // PDF y-origin is the text baseline and runs bottom-up; CSS top runs
-    // down from the top edge — hence subtracting the glyph height.
     span.style.top = `${tx[5] - fontHeight}px`;
     span.style.fontSize = `${fontHeight}px`;
     span.style.fontFamily = "sans-serif";
     span.style.whiteSpace = "pre";
     span.style.transformOrigin = "0% 0%";
-    // Transparent text sitting exactly over the painted glyphs: invisible, but
-    // still selectable and highlightable.
     span.style.color = "transparent";
 
-    if (term && item.str.toLowerCase().includes(term)) {
+    container.appendChild(span);
+  }
+}
+
+/** Updates highlight styles on an existing text layer without rebuilding it. */
+function applySearchHighlight(container: HTMLDivElement, searchTerm?: string): void {
+  const term = searchTerm?.trim().toLowerCase();
+  for (const node of Array.from(container.children)) {
+    const span = node as HTMLSpanElement;
+    const text = span.textContent?.toLowerCase() ?? "";
+    if (term && text.includes(term)) {
       span.style.backgroundColor = "rgba(250, 204, 21, 0.45)";
       span.dataset.searchHit = "true";
+    } else {
+      span.style.backgroundColor = "";
+      delete span.dataset.searchHit;
     }
-
-    container.appendChild(span);
   }
 }
 

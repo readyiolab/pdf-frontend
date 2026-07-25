@@ -25,17 +25,17 @@ const CASES: Case[] = [
   {
     icon: UserRound,
     title: "Just me",
-    desc: "Sign it yourself — add a single signature field and you're done.",
+    desc: "Sign it yourself — add your signature and you're done.",
   },
   {
     icon: UserRound,
     title: "One other person",
-    desc: "Email one recipient a private link to review and sign.",
+    desc: "We email them a private link to review and sign.",
   },
   {
     icon: Users,
     title: "Several people, in order",
-    desc: "Each person is emailed only after the one before them signs.",
+    desc: "Each person gets the email only after the one before them finishes.",
   },
   {
     icon: Users,
@@ -45,9 +45,9 @@ const CASES: Case[] = [
 ];
 
 const TRUST: { icon: typeof ShieldCheck; text: string }[] = [
-  { icon: ShieldCheck, text: "Every signature is cryptographically sealed into the final PDF and timestamped." },
-  { icon: FileCheck2, text: "A tamper-evident audit trail records who signed, when, and from which device and IP." },
-  { icon: Info, text: "Recipients sign from their own private link — no account needed." },
+  { icon: ShieldCheck, text: "Each signature is locked into the final PDF with a timestamp." },
+  { icon: FileCheck2, text: "A clear record shows who signed, when, and from where." },
+  { icon: Info, text: "People sign from their own private link — no account needed." },
 ];
 
 /**
@@ -98,7 +98,7 @@ export function ESignHowItWorks({ className, forceOpen = false }: { className?: 
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold">Legally-binding e-signatures</h2>
+            <h2 className="text-sm font-semibold">Get documents signed online</h2>
             <button
               onClick={() => setOpen((o) => !o)}
               className="text-muted-foreground transition-colors hover:text-foreground"
@@ -108,7 +108,7 @@ export function ESignHowItWorks({ className, forceOpen = false }: { className?: 
             </button>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Upload a PDF, drop your fields onto it, and send it off. Here's how it works and who can sign.
+            Upload a PDF, say who signs, place the signature boxes, then send. Three simple steps.
           </p>
         </div>
         {!forceOpen && (

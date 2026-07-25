@@ -13,7 +13,7 @@ export default function ExplainPdf() {
         { id: "legal", label: "Legal lens", hint: "Rights, obligations, risks" },
         { id: "technical", label: "Technical", hint: "For a technical reader" },
       ]}
-      run={(fileKey, audience) => aiApi.explain(fileKey, audience as ExplainAudience)}
+      onRun={(fileKey, audience) => aiApi.explain(fileKey, audience as ExplainAudience)}
     />
   );
 }

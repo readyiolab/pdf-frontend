@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FIELD_META } from "@/lib/signing/fieldMeta";
+import { cn } from "@/lib/utils";
 import type { SignFieldConfig, SignRecipient } from "@/lib/signing/types";
 import type { DesignerField } from "./useFieldDesigner";
 
@@ -24,6 +25,10 @@ interface PropertiesPanelProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleLock: () => void;
+  /** When true, render nothing until a field is selected (desktop progressive disclosure). */
+  hideWhenEmpty?: boolean;
+  /** Optional layout overrides (e.g. full-width inside a Sheet). */
+  className?: string;
 }
 
 /** Field types that accept a list of choices. */
@@ -66,17 +71,25 @@ export function PropertiesPanel({
   onDuplicate,
   onDelete,
   onToggleLock,
+  hideWhenEmpty = false,
+  className,
 }: PropertiesPanelProps) {
   if (selected.length === 0) {
+    if (hideWhenEmpty) return null;
     return (
-      <aside className="flex w-64 shrink-0 flex-col items-center justify-center gap-3 border-l border-border bg-card p-6 text-center">
+      <aside
+        className={cn(
+          "flex w-64 shrink-0 flex-col items-center justify-center gap-3 border-l border-border bg-card p-6 text-center",
+          className
+        )}
+      >
         <div className="flex size-11 items-center justify-center rounded-xl bg-muted">
           <MousePointerClick className="size-5 text-muted-foreground" />
         </div>
         <div>
           <p className="text-sm font-medium">No field selected</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Select a field on the page to edit its properties, or drag a new one from the left.
+            Tap a box on the page to change who fills it in, or whether it is required.
           </p>
         </div>
       </aside>
@@ -99,8 +112,13 @@ export function PropertiesPanel({
   };
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col overflow-y-auto border-l border-border bg-card" aria-label="Field properties">
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+    <aside
+      className={cn(
+        "flex w-64 shrink-0 flex-col overflow-y-auto border-l border-border bg-card",
+        className
+      )}
+      aria-label="Field properties"
+    >      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <meta.icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <p className="truncate text-xs font-semibold">
           {isMulti ? `${selected.length} fields selected` : meta.label}
@@ -244,6 +262,24 @@ export function PropertiesPanel({
                       className="min-h-16 text-xs"
                       placeholder="One option per line"
                     />
+                  </div>
+                )}
+
+                {field.type === "RADIO" && (
+                  <div>
+                    <Label htmlFor="field-radio-group" className="mb-1.5 text-xs font-normal">
+                      Radio group
+                    </Label>
+                    <Input
+                      id="field-radio-group"
+                      value={field.config.group ?? ""}
+                      onChange={(e) => patchConfig({ group: e.target.value || undefined })}
+                      className="h-8 text-xs"
+                      placeholder={field.label || "Group name"}
+                    />
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Radios that share a group are mutually exclusive for that recipient.
+                    </p>
                   </div>
                 )}
 

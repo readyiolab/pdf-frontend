@@ -156,6 +156,14 @@ export const signingApi = {
   send: (documentId: string): Promise<SendResult> =>
     apiFetch(`/documents/${documentId}/send`, { method: "POST" }),
 
+  /** Self-sign: mints a token for the owner and skips invitation email. */
+  sendSelf: (documentId: string): Promise<{ documentId: string; status: string; token: string }> =>
+    apiFetch(`/documents/${documentId}/send-self`, { method: "POST" }),
+
+  /** Cancels an in-flight signing request. */
+  voidDocument: (documentId: string): Promise<{ id: string; status: "VOIDED" }> =>
+    apiFetch(`/documents/${documentId}/void`, { method: "POST" }),
+
   /** Re-emails one recipient's invitation (a manual reminder). */
   resend: (documentId: string, recipientId: string): Promise<{ documentId: string; notified: NotifyResult[] }> =>
     apiFetch(`/documents/${documentId}/recipients/${recipientId}/resend`, { method: "POST" }),
@@ -172,11 +180,52 @@ export const signingApi = {
   getCertificateUrl: (documentId: string): Promise<{ url: string }> =>
     apiFetch(`/documents/${documentId}/certificate`, { method: "GET" }),
 
+  // --- Templates ---
+
+  listTemplates: (): Promise<{ templates: SignTemplateSummary[] }> =>
+    apiFetch("/documents/templates", { method: "GET" }),
+
+  createTemplate: (body: { documentId: string; name?: string }): Promise<SignTemplateSummary> =>
+    apiFetch("/documents/templates", { method: "POST", body: JSON.stringify(body) }),
+
+  deleteTemplate: (id: string): Promise<{ id: string; deleted: boolean }> =>
+    apiFetch(`/documents/templates/${id}`, { method: "DELETE" }),
+
+  useTemplate: (
+    id: string,
+    recipients: { email: string; name?: string }[]
+  ): Promise<SignDocument> =>
+    apiFetch(`/documents/templates/${id}/use`, {
+      method: "POST",
+      body: JSON.stringify({ recipients }),
+    }),
+
   // --- Audit ---
 
   getAudit: (documentId: string, page = 1, limit = 50): Promise<Paginated<SignAuditEntry>> =>
     apiFetch(`/documents/${documentId}/audit?page=${page}&limit=${limit}`, { method: "GET" }),
 };
+
+export interface SignTemplateSummary {
+  id: string;
+  name: string;
+  message: string | null;
+  flowType: "SEQUENTIAL" | "PARALLEL";
+  fileName: string;
+  fileSize: number;
+  pageCount: number;
+  recipientCount: number;
+  fieldCount: number;
+  recipients: {
+    role: string;
+    name: string;
+    color: string;
+    signingOrder: number;
+    authMethod: string;
+  }[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface NotifyResult {
   recipientId: string;

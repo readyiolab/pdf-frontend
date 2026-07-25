@@ -13,7 +13,7 @@ export default function SummarizePdf() {
         { id: "detailed", label: "Detailed", hint: "Thorough, section by section" },
         { id: "bullets", label: "Key points", hint: "A bulleted list" },
       ]}
-      run={(fileKey, style) => aiApi.summarize(fileKey, style as SummaryStyle)}
+      onRun={(fileKey, style) => aiApi.summarize(fileKey, style as SummaryStyle)}
     />
   );
 }

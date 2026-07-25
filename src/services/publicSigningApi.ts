@@ -78,6 +78,7 @@ export interface SignView {
   participants: SignViewParticipant[];
   fields: SignViewField[];
   requiresOtp: boolean;
+  requiresAccessCode?: boolean;
   isVerified: boolean;
   /** Null until identity verification passes — the OTP would be decorative otherwise. */
   fileUrl: string | null;
@@ -144,12 +145,19 @@ export const publicSigningApi = {
       body: JSON.stringify({ code }),
     }),
 
+  verifyAccessCode: (token: string, code: string) =>
+    signFetch<{ sessionToken: string; fileUrl: string }>(`/${token}/verify-access-code`, {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+
   complete: (token: string, values: Record<string, string>, sessionToken?: string | null) =>
-    signFetch<{ status: string; documentCompleted: boolean }>(
-      `/${token}/complete`,
-      { method: "POST", body: JSON.stringify({ values }) },
-      sessionToken
-    ),
+    signFetch<{
+      status: string;
+      documentCompleted: boolean;
+      documentFinalizing?: boolean;
+      documentStatus?: string;
+    }>(`/${token}/complete`, { method: "POST", body: JSON.stringify({ values }) }, sessionToken),
 
   decline: (token: string, reason?: string) =>
     signFetch<{ status: string }>(`/${token}/decline`, {

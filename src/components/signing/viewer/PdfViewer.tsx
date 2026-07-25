@@ -70,7 +70,9 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
   const [fitMode, setFitMode] = useState<FitMode>("width");
   const [rotation, setRotation] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [showThumbnails, setShowThumbnails] = useState(true);
+  const [showThumbnails, setShowThumbnails] = useState(
+    () => typeof window !== "undefined" && window.innerWidth >= 1024
+  );
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [visibleRange, setVisibleRange] = useState({ start: 1, end: 3 });

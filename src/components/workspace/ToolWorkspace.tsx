@@ -159,7 +159,7 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
   // Warm up PDF.js the moment the workspace opens, so the first preview doesn't
   // also have to wait for the library to download from the CDN.
   useEffect(() => {
-    loadPdfJs().catch(() => {});
+    loadPdfJs().catch(() => { });
   }, []);
 
   // DnD sensors
@@ -659,8 +659,8 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
 
       {/* Auth-after-upload modal — resumes processing on success */}
       <AuthModal
-        open={authModalOpen}
-        onOpenChange={setAuthModalOpen}
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
         onSuccess={handleAuthSuccess}
       />
 

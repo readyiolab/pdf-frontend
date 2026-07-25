@@ -15,6 +15,7 @@
 export type SignDocumentStatus =
   | "DRAFT"
   | "SENT"
+  | "FINALIZING"
   | "COMPLETED"
   | "DECLINED"
   | "EXPIRED"
@@ -48,6 +49,8 @@ export interface SignFieldConfig {
   placeholder?: string;
   defaultValue?: string;
   options?: string[];
+  /** RADIO exclusive group; falls back to label when unset. */
+  group?: string;
   validation?: {
     minLength?: number;
     maxLength?: number;
@@ -199,4 +202,5 @@ export const SIGNING_LIMITS = {
   maxMessageLength: 2000,
   maxFileSize: 50 * 1024 * 1024,
   defaultExpiryDays: 30,
+  completionDownloadTtlSeconds: 7 * 24 * 60 * 60,
 } as const;

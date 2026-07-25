@@ -3,12 +3,15 @@ export interface User {
   email: string;
   name: string;
   plan: string;
+  emailVerified?: boolean;
+  authProvider?: string;
   dailyOpsUsed: number;
   dailyOpsLimit: number;
   dailyOpsRemaining: number;
   dailyOpsResetAt: string;
   createdAt: string;
   jobs?: Job[];
+  isGuest?: boolean;
 }
 
 export interface Job {
@@ -128,9 +131,18 @@ export const apiService = {
   login: (email: string, password: string) =>
     apiFetch("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
 
+  googleLogin: (data: { credential: string }) =>
+    apiFetch("/auth/google", { method: "POST", body: JSON.stringify(data) }),
+
   guestLogin: () => apiFetch("/auth/guest", { method: "POST" }),
 
   logout: () => apiFetch("/auth/logout", { method: "POST" }),
+
+  verifyEmail: (token: string) =>
+    apiFetch("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) }),
+
+  resendVerification: () =>
+    apiFetch("/auth/resend-verification", { method: "POST" }),
 
   // User
   getProfile: () => apiFetch("/users/me", { method: "GET" }),
@@ -196,4 +208,20 @@ export const apiService = {
   // Billing
   initiateCheckout: (planId: string) => 
     apiFetch("/billing/checkout", { method: "POST", body: JSON.stringify({ planId }) }),
+
+  // Cloud Integrations
+  getCloudIntegrations: () =>
+    apiFetch("/cloud/integrations", { method: "GET" }),
+
+  connectCloud: (provider: string, accountEmail: string, accessToken?: string) =>
+    apiFetch("/cloud/connect", { method: "POST", body: JSON.stringify({ provider, accountEmail, accessToken }) }),
+
+  disconnectCloud: (provider: string) =>
+    apiFetch("/cloud/disconnect", { method: "POST", body: JSON.stringify({ provider }) }),
+
+  getCloudFiles: (provider: string) =>
+    apiFetch(`/cloud/files?provider=${provider}`, { method: "GET" }),
+
+  syncCloudWorkspace: () =>
+    apiFetch("/cloud/sync", { method: "POST" }),
 };

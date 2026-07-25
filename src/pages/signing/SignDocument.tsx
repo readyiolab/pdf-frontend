@@ -11,6 +11,7 @@ import { PdfViewer, type PdfViewerHandle } from "@/components/signing/viewer/Pdf
 import { SignFieldOverlay } from "@/components/signing/sign/SignFieldOverlay";
 import { SignatureModal } from "@/components/signing/sign/SignatureModal";
 import { OtpModal } from "@/components/signing/sign/OtpModal";
+import { AccessCodeModal } from "@/components/signing/sign/AccessCodeModal";
 import {
   publicSigningApi,
   SigningError,
@@ -70,6 +71,7 @@ export default function SignDocument() {
   const [loadError, setLoadError] = useState<{ message: string; status: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDone, setIsDone] = useState(false);
+  const [documentSealing, setDocumentSealing] = useState(false);
   const [signatureFor, setSignatureFor] = useState<SignViewField | null>(null);
   const [textFor, setTextFor] = useState<SignViewField | null>(null);
   const [textDraft, setTextDraft] = useState("");
@@ -137,17 +139,32 @@ export default function SignDocument() {
     [requiredFields, values]
   );
   const canFinish = requiredFields.length === filledRequired.length;
+  const isApprover = view?.recipient.role === "APPROVER";
+  const finishLabel = isApprover && actionable.length === 0 ? "Approve" : isApprover ? "Approve" : "Finish";
 
   const openField = useCallback((field: SignViewField) => {
     if (IMAGE_FIELDS.has(field.type)) {
       setSignatureFor(field);
-    } else if (field.type === "CHECKBOX" || field.type === "RADIO") {
+    } else if (field.type === "CHECKBOX") {
       setValues((v) => ({ ...v, [field.id]: v[field.id] === "true" ? "false" : "true" }));
+    } else if (field.type === "RADIO") {
+      const groupKey = field.config?.group || field.label || field.id;
+      setValues((v) => {
+        const next = { ...v };
+        const turningOn = v[field.id] !== "true";
+        for (const f of myFields) {
+          if (f.type !== "RADIO") continue;
+          const g = f.config?.group || f.label || f.id;
+          if (g === groupKey) next[f.id] = "false";
+        }
+        if (turningOn) next[field.id] = "true";
+        return next;
+      });
     } else if (!AUTO_FILLED.has(field.type)) {
       setTextFor(field);
       setTextDraft(values[field.id] ?? field.value ?? field.config?.defaultValue ?? "");
     }
-  }, [values]);
+  }, [values, myFields]);
 
   const goToNext = () => {
     if (!nextRequired) return;
@@ -167,8 +184,11 @@ export default function SignDocument() {
     try {
       const result = await publicSigningApi.complete(token, values, sessionRef.current);
       setIsDone(true);
+      setDocumentSealing(Boolean(result.documentFinalizing || result.documentCompleted));
       toast.success(
-        result.documentCompleted ? "Signed — everyone has now completed this document." : "Your signature has been recorded."
+        result.documentCompleted
+          ? "You're done! We're sealing the final document."
+          : "You're done — thank you for signing."
       );
     } catch (err) {
       toast.error(err instanceof SigningError ? err.message : "Couldn't submit your signature.");
@@ -247,6 +267,19 @@ export default function SignDocument() {
     );
   }
 
+  if (view.requiresAccessCode && !view.isVerified && !sessionRef.current) {
+    return (
+      <AccessCodeModal
+        token={token}
+        onVerified={(sessionToken, url) => {
+          sessionRef.current = sessionToken;
+          setFileUrl(url);
+          setView((v) => (v ? { ...v, isVerified: true } : v));
+        }}
+      />
+    );
+  }
+
   if (view.recipient.status === "DECLINED") {
     return (
       <CenteredMessage icon={X} tone="error" title="You declined this document">
@@ -257,14 +290,18 @@ export default function SignDocument() {
 
   if (isDone) {
     return (
-      <CenteredMessage icon={PartyPopper} tone="success" title="All done — thank you">
+      <CenteredMessage icon={PartyPopper} tone="success" title="You're done — thank you">
         <p>
-          Your signature on <strong className="text-foreground">{view.document.title}</strong> has been recorded.
+          Your signature on <strong className="text-foreground">{view.document.title}</strong> has been saved.
         </p>
         <p className="mt-2">
-          {view.participants.filter((p) => p.status !== "COMPLETED" && (p.role === "SIGNER" || p.role === "APPROVER")).length > 0
-            ? "We're now waiting on the other signers. You'll get a copy by email once everyone has signed."
-            : "Everyone has signed. A copy will be emailed to you shortly."}
+          {documentSealing
+            ? "We're sealing the final PDF — this usually takes a few seconds. You'll get a copy by email when it's ready."
+            : view.participants.filter(
+                  (p) => p.status !== "COMPLETED" && (p.role === "SIGNER" || p.role === "APPROVER")
+                ).length > 0
+              ? "We're waiting on the other people to sign. You'll get a copy by email once everyone is done."
+              : "Everyone has signed. A copy will be emailed to you shortly."}
         </p>
       </CenteredMessage>
     );
@@ -303,8 +340,8 @@ export default function SignDocument() {
       <div className="shrink-0 border-b border-border bg-card px-3 py-2">
         <div className="mb-1.5 flex items-center justify-between text-[11px]">
           <span className="font-medium">
-            {filledRequired.length} of {requiredFields.length} required field
-            {requiredFields.length === 1 ? "" : "s"} complete
+            {filledRequired.length} of {requiredFields.length} step
+            {requiredFields.length === 1 ? "" : "s"} done
           </span>
           {canFinish && (
             <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-500">
@@ -329,13 +366,13 @@ export default function SignDocument() {
           </Button>
           {nextRequired ? (
             <Button onClick={goToNext} className="flex-1">
-              Go to next field
+              Go to next yellow box
               <ArrowRight />
             </Button>
           ) : (
             <Button onClick={handleSubmit} disabled={isSubmitting} className="flex-1">
               {isSubmitting ? <Spinner className="size-4" /> : <Check />}
-              Finish signing
+              {finishLabel}
             </Button>
           )}
         </div>

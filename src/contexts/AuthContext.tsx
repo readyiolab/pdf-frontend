@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import { apiService, type User } from "../services/api";
 
 interface AuthContextType {
@@ -7,9 +7,12 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, name: string, password: string) => Promise<void>;
+  googleLogin: (data: { credential: string }) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<User>;
   guestSession: () => Promise<void>;
+  resendVerification: () => Promise<void>;
+  applyVerifiedSession: (data: { token: string; user: User }) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,12 +22,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(localStorage.getItem("saas_jwt_token"));
   const [loading, setLoading] = useState(true);
 
-  // Bootstrap ONCE on mount: a returning user with a stored token needs their
-  // profile fetched. Deliberately empty deps — keying this on `token` (as it
-  // used to) meant every login re-triggered a second getProfile round trip on
-  // top of the login response we already had, and left `loading` stuck true
-  // through that whole extra request, so login FELT slow. Login now sets the
-  // user directly and this never re-runs.
   useEffect(() => {
     const stored = localStorage.getItem("saas_jwt_token");
     if (!stored) {
@@ -35,34 +32,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .getProfile()
       .then((data) => setUser(data.user))
       .catch(() => {
-        // Token expired/invalid — clear it so ProtectedRoute redirects cleanly.
         localStorage.removeItem("saas_jwt_token");
         setToken(null);
         setUser(null);
       })
       .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * Applies a fresh auth response, then enriches the profile in the background.
-   *
-   * The login/register/guest endpoints already return the core user (id, email,
-   * name, plan), so the UI can unblock immediately. The fuller profile
-   * (dailyOps counters, recent jobs) is fetched WITHOUT blocking — it fills in a
-   * moment later. This is the difference between login feeling instant and
-   * login waiting on a second, Redis-backed round trip before the page moves.
-   */
-  const applySession = (data: { token: string; user: User }) => {
+  const applySession = useCallback((data: { token: string; user: User }) => {
     localStorage.setItem("saas_jwt_token", data.token);
     setToken(data.token);
     setUser(data.user);
     setLoading(false);
-    // Fire-and-forget: enrich with dailyOps/jobs; a failure here is harmless.
     apiService.getProfile().then((full) => setUser(full.user)).catch(() => undefined);
-  };
+  }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
       applySession(await apiService.login(email, password));
@@ -70,9 +55,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
       throw err;
     }
-  };
+  }, [applySession]);
 
-  const register = async (email: string, name: string, password: string) => {
+  const register = useCallback(async (email: string, name: string, password: string) => {
     setLoading(true);
     try {
       applySession(await apiService.register(email, name, password));
@@ -80,54 +65,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
       throw err;
     }
-  };
+  }, [applySession]);
 
-  const logout = () => {
-    // Revoke the token server-side (best-effort), then clear local state.
+  const googleLogin = useCallback(async (data: { credential: string }) => {
+    setLoading(true);
+    try {
+      applySession(await apiService.googleLogin(data));
+    } catch (err) {
+      setLoading(false);
+      throw err;
+    }
+  }, [applySession]);
+
+  const logout = useCallback(() => {
     apiService.logout().catch(() => undefined);
     localStorage.removeItem("saas_jwt_token");
     setToken(null);
     setUser(null);
-  };
+  }, []);
 
-  const refreshProfile = async (): Promise<User> => {
-    try {
-      const data = await apiService.getProfile();
-      setUser(data.user);
-      return data.user;
-    } catch (err) {
-      console.error("Failed to refresh user profile:", err);
-      throw err;
-    }
-  };
+  const refreshProfile = useCallback(async (): Promise<User> => {
+    const data = await apiService.getProfile();
+    setUser(data.user);
+    return data.user;
+  }, []);
 
-  const guestSession = async () => {
+  const guestSession = useCallback(async () => {
     setLoading(true);
     try {
-      // Real anonymous session issued by the server (no weak generated password).
       applySession(await apiService.guestLogin());
     } catch (err) {
       setLoading(false);
       throw err;
     }
-  };
+  }, [applySession]);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        loading,
-        login,
-        register,
-        logout,
-        refreshProfile,
-        guestSession,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const resendVerification = useCallback(async () => {
+    await apiService.resendVerification();
+  }, []);
+
+  const applyVerifiedSession = useCallback((data: { token: string; user: User }) => {
+    applySession(data);
+  }, [applySession]);
+
+  const value = useMemo(
+    () => ({
+      user,
+      token,
+      loading,
+      login,
+      register,
+      googleLogin,
+      logout,
+      refreshProfile,
+      guestSession,
+      resendVerification,
+      applyVerifiedSession,
+    }),
+    [
+      user,
+      token,
+      loading,
+      login,
+      register,
+      googleLogin,
+      logout,
+      refreshProfile,
+      guestSession,
+      resendVerification,
+      applyVerifiedSession,
+    ]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

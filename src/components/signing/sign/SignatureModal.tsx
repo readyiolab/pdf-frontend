@@ -266,18 +266,18 @@ export function SignatureModal({ open, variant, signerName, onClose, onApply }: 
           </div>
         </div>
 
-        <div className="mt-4 flex gap-2">
-          <Button variant="outline" onClick={onClose} className="flex-1">
+        <div className="mt-4 flex gap-3">
+          <Button variant="outline" onClick={onClose} className="flex-1 h-12 rounded-xl text-xs font-semibold border-border cursor-pointer">
             Cancel
           </Button>
-          <Button onClick={handleApply} className="flex-1">
-            <Check />
-            Apply
+          <Button onClick={handleApply} className="flex-1 h-12 rounded-xl text-xs font-semibold bg-foreground text-background hover:bg-foreground/90 shadow-md cursor-pointer">
+            <Check className="h-4 w-4 mr-1.5" />
+            Apply Signature
           </Button>
         </div>
 
-        <p className="mt-3 text-center text-[10px] leading-relaxed text-muted-foreground">
-          By applying, you agree this is a legal representation of your signature.
+        <p className="mt-3 text-center text-[10px] leading-relaxed text-muted-foreground font-normal">
+          By applying, you agree this is a legal representation of your signature for this document.
         </p>
       </div>
     </div>

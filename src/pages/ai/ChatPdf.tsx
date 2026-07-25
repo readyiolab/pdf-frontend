@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, FileText, MessageSquare, SendHorizontal, Sparkles, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, FileText, MessageSquare, SendHorizontal, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -186,7 +186,7 @@ export default function ChatPdf() {
         {thinking && (
           <div className="flex justify-start">
             <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-border bg-card px-3.5 py-2.5">
-              <Sparkles className="size-3.5 animate-pulse text-primary" />
+              <FileText className="size-3.5 text-primary" />
               <span className="text-xs text-muted-foreground">Thinking…</span>
             </div>
           </div>

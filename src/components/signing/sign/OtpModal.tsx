@@ -70,11 +70,11 @@ export function OtpModal({ token, onVerified }: OtpModalProps) {
           <ShieldCheck className="size-6 text-primary" />
         </div>
 
-        <h1 className="text-lg font-semibold">Verify it's you</h1>
+        <h1 className="text-lg font-semibold">Enter the code we emailed you</h1>
         <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed text-muted-foreground">
           {sentTo
-            ? `We sent a 6-digit code to ${sentTo}. Enter it below to open the document.`
-            : "For your security, we need to verify your identity before you can view this document."}
+            ? `We sent a 6-digit code to ${sentTo}. Type it below to open the document.`
+            : "For your security, we need a quick check before you can see this document."}
         </p>
 
         {sentTo ? (

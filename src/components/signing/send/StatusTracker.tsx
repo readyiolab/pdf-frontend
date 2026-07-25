@@ -11,6 +11,7 @@ import {
   RotateCw,
   ShieldCheck,
   XCircle,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
   const [resending, setResending] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<"doc" | "cert" | null>(null);
   const [showActivity, setShowActivity] = useState(false);
+  const [isVoiding, setIsVoiding] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -73,7 +75,7 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
         setStatus(data);
         setIsLoading(false);
         // Keep polling only while there's still something to wait for.
-        if (data.status === "SENT") timer = setTimeout(poll, 8000);
+        if (data.status === "SENT" || data.status === "FINALIZING") timer = setTimeout(poll, 8000);
       } catch {
         if (active) setIsLoading(false);
       }
@@ -114,6 +116,27 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
     }
   };
 
+  const handleVoid = async () => {
+    if (
+      !window.confirm(
+        "Cancel this signing request? Recipients will no longer be able to sign, and this can't be undone."
+      )
+    ) {
+      return;
+    }
+    setIsVoiding(true);
+    try {
+      await signingApi.voidDocument(documentId);
+      const data = await signingApi.getStatus(documentId);
+      setStatus(data);
+      toast.success("Signing request cancelled.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't cancel the document.");
+    } finally {
+      setIsVoiding(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -126,7 +149,11 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
 
   const signedVersion = status.versions.find((v) => v.digitallySigned);
   const isDone = status.status === "COMPLETED";
+  const isSealing = status.status === "FINALIZING";
   const isDeclined = status.status === "DECLINED";
+  const isVoided = status.status === "VOIDED";
+  const isExpired = status.status === "EXPIRED";
+  const canVoid = status.status === "SENT" || status.status === "FINALIZING";
 
   return (
     <div className="mx-auto h-full max-w-2xl space-y-5 overflow-y-auto p-4 sm:p-6">
@@ -136,24 +163,38 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
           "rounded-2xl border p-4",
           isDone
             ? "border-emerald-500/30 bg-emerald-500/5"
-            : isDeclined
+            : isDeclined || isVoided
               ? "border-destructive/30 bg-destructive/5"
-              : "border-border bg-card"
+              : isExpired
+                ? "border-amber-500/30 bg-amber-500/5"
+                : isSealing
+                  ? "border-sky-500/30 bg-sky-500/5"
+                  : "border-border bg-card"
         )}
       >
         <div className="flex items-center gap-3">
           <div
             className={cn(
               "flex size-10 shrink-0 items-center justify-center rounded-xl",
-              isDone ? "bg-emerald-500/10" : isDeclined ? "bg-destructive/10" : "bg-primary/10"
+              isDone
+                ? "bg-emerald-500/10"
+                : isDeclined || isVoided
+                  ? "bg-destructive/10"
+                  : isExpired
+                    ? "bg-amber-500/10"
+                    : isSealing
+                      ? "bg-sky-500/10"
+                      : "bg-primary/10"
             )}
           >
             {isDone ? (
               <FileCheck className="size-5 text-emerald-600 dark:text-emerald-500" />
-            ) : isDeclined ? (
+            ) : isDeclined || isVoided ? (
               <XCircle className="size-5 text-destructive" />
+            ) : isExpired ? (
+              <Clock className="size-5 text-amber-600 dark:text-amber-500" />
             ) : (
-              <Clock className="size-5 text-primary" />
+              <Clock className={cn("size-5", isSealing ? "animate-pulse text-sky-600" : "text-primary")} />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -161,12 +202,25 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
               {isDone
                 ? "Everyone has signed"
                 : isDeclined
-                  ? "A recipient declined"
-                  : "Awaiting signatures"}
+                  ? "Someone declined"
+                  : isVoided
+                    ? "Cancelled"
+                    : isExpired
+                      ? "Expired"
+                      : isSealing
+                        ? "Sealing the signed PDF…"
+                        : "Waiting for signatures"}
             </p>
             <p className="text-xs text-muted-foreground">
-              {status.progress.signed} of {status.progress.total} signed
-              {status.flowType === "SEQUENTIAL" ? " · in order" : " · any order"}
+              {isSealing
+                ? "This usually takes a few seconds."
+                : isVoided
+                  ? "This signing request was cancelled."
+                  : isExpired
+                    ? "The signing deadline has passed."
+                    : `${status.progress.signed} of ${status.progress.total} signed${
+                        status.flowType === "SEQUENTIAL" ? " · in order" : " · any order"
+                      }`}
             </p>
           </div>
         </div>
@@ -174,6 +228,18 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
           value={status.progress.total ? (status.progress.signed / status.progress.total) * 100 : 0}
           className="mt-3 h-1.5"
         />
+        {canVoid && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3 text-destructive hover:text-destructive"
+            onClick={handleVoid}
+            disabled={isVoiding}
+          >
+            {isVoiding ? <Spinner className="size-3.5" /> : <Ban className="size-3.5" />}
+            Cancel request
+          </Button>
+        )}
       </div>
 
       {/* --- Completed: downloads + integrity --- */}
@@ -230,7 +296,11 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
                 : r.status === "VIEWED"
                   ? fmtIST(r.viewedAt)
                   : null;
-            const canRemind = status.status === "SENT" && r.status !== "COMPLETED" && r.status !== "DECLINED" && r.status !== "PENDING";
+            const canRemind =
+              status.status === "SENT" &&
+              r.status !== "COMPLETED" &&
+              r.status !== "DECLINED" &&
+              r.status !== "PENDING";
 
             return (
               <div key={r.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">

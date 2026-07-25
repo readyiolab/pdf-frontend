@@ -12,6 +12,8 @@ interface FieldPaletteProps {
   readOnly: boolean;
   /** Click-to-place fallback: adds to the centre of the current page. */
   onQuickAdd: (type: SignFieldType) => void;
+  /** Optional layout overrides (e.g. full-width inside a Sheet). */
+  className?: string;
 }
 
 /**
@@ -23,10 +25,13 @@ interface FieldPaletteProps {
  * native dragover event gives us those coordinates directly. Clicking a field
  * also works, for touch and keyboard users who can't drag.
  */
-export function FieldPalette({ activeRecipient, readOnly, onQuickAdd }: FieldPaletteProps) {
+export function FieldPalette({ activeRecipient, readOnly, onQuickAdd, className }: FieldPaletteProps) {
   return (
     <aside
-      className="flex w-52 shrink-0 flex-col overflow-y-auto border-r border-border bg-card"
+      className={cn(
+        "flex w-52 shrink-0 flex-col overflow-y-auto border-r border-border bg-card",
+        className
+      )}
       aria-label="Field types"
     >
       <div className="border-b border-border px-3 py-2.5">
@@ -54,8 +59,9 @@ export function FieldPalette({ activeRecipient, readOnly, onQuickAdd }: FieldPal
       <div className="flex-1 p-2">
         {FIELD_GROUPS.map((group) => {
           const types = (Object.keys(FIELD_META) as SignFieldType[]).filter(
-            (t) => FIELD_META[t].group === group.id
+            (t) => FIELD_META[t].group === group.id && !FIELD_META[t].hidden
           );
+          if (types.length === 0) return null;
           return (
             <div key={group.id} className="mb-3">
               <p className="px-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">

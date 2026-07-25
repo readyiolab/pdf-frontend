@@ -158,8 +158,9 @@ export function ViewerToolbar({
         </TooltipContent>
       </Tooltip>
 
-      <Separator orientation="vertical" className="mx-1 h-5" />
+      <Separator orientation="vertical" className="mx-1 hidden h-5 sm:block" />
 
+      <div className="hidden items-center gap-1 sm:flex">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -204,6 +205,7 @@ export function ViewerToolbar({
           Rotate <Shortcut keys="R" />
         </TooltipContent>
       </Tooltip>
+      </div>
 
       <div className="ml-auto flex items-center gap-1">
         {searchOpen ? (

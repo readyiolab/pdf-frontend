@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, Copy, FileText, RefreshCw, Sparkles, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, Copy, FileText, RefreshCw, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ interface AiDocPanelProps {
   actionLabel: string;
   presets: AiPreset[];
   /** Runs the AI action for the uploaded file + chosen preset. */
-  run: (fileKey: string, presetId: string) => Promise<AiResult>;
+  onRun: (fileKey: string, preset: string) => Promise<AiResult>;
   /** Accent gradient for the header icon. */
   accent?: string;
 }
@@ -33,31 +33,32 @@ const MAX_MB = 30;
 /**
  * Shared UI for a one-shot AI document action (Summarize, Explain, …).
  *
- * The action itself is injected via `run`, so a new AI tool is a thin wrapper
+ * The action itself is injected via `onRun`, so a new AI tool is a thin wrapper
  * that passes presets and an aiApi call — no duplicated upload/preview/quota UI.
  */
-export function AiDocPanel({ title, subtitle, actionLabel, presets, run, accent }: AiDocPanelProps) {
+export function AiDocPanel({ title, subtitle, actionLabel, presets, onRun, accent }: AiDocPanelProps) {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [fileKey, setFileKey] = useState<string | null>(null);
-  const [preset, setPreset] = useState(presets[0].id);
+  const [preset, setPreset] = useState(presets[0]?.id ?? "");
   const [isDragging, setIsDragging] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<AiResult | null>(null);
-  const [runId, setRunId] = useState(0); // bumps per generation → restarts the reveal
   const [quota, setQuota] = useState<AiQuota | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const preview = usePdfPreviews(file, 1);
+  const previews = usePdfPreviews(file, 1);
+  const heroPreview = previews.previews[0];
 
   useEffect(() => {
     aiApi.getQuota().then(setQuota).catch(() => undefined);
   }, []);
 
-  const outOfCredits = quota ? quota.remaining <= 0 : false;
+  const outOfCredits = Boolean(quota && quota.remaining <= 0);
+  const runId = result ? `${fileKey}:${preset}` : "";
 
   const pickFile = (f: File | undefined) => {
     if (!f) return;
@@ -87,9 +88,8 @@ export function AiDocPanel({ title, subtitle, actionLabel, presets, run, accent 
         setFileKey(key);
       }
       setProgress(100);
-      const res = await run(key, preset);
+      const res = await onRun(key, preset);
       setResult(res);
-      setRunId((n) => n + 1);
       aiApi.getQuota().then(setQuota).catch(() => undefined);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong.");
@@ -105,13 +105,11 @@ export function AiDocPanel({ title, subtitle, actionLabel, presets, run, accent 
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const heroPreview = preview.previews[0];
-
   return (
     <div className="mx-auto w-full max-w-6xl p-4 sm:p-6">
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br", accent ?? "from-primary/20 to-primary/5")}>
-          <Sparkles className="size-5 text-primary" />
+          <FileText className="size-5 text-primary" />
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
@@ -195,7 +193,7 @@ export function AiDocPanel({ title, subtitle, actionLabel, presets, run, accent 
               {result ? (
                 <>
                   <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-                    <Sparkles className="size-4 text-primary" />
+                    <FileText className="size-4 text-primary" />
                     <span className="text-sm font-semibold">Result</span>
                     <Button variant="ghost" size="xs" onClick={copy} className="ml-auto">
                       {copied ? <Check className="text-emerald-500" /> : <Copy />}
@@ -212,7 +210,7 @@ export function AiDocPanel({ title, subtitle, actionLabel, presets, run, accent 
               ) : isWorking ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
                   <div className="relative flex size-12 items-center justify-center">
-                    <Sparkles className="size-6 animate-pulse text-primary" />
+                    <FileText className="size-6 text-primary" />
                     <span className="absolute inset-0 animate-ping rounded-full border-2 border-primary/20" style={{ animationDuration: "2s" }} />
                   </div>
                   <p className="text-sm font-medium">{progress < 100 ? `Uploading… ${progress}%` : "Reading your document…"}</p>
@@ -224,14 +222,14 @@ export function AiDocPanel({ title, subtitle, actionLabel, presets, run, accent 
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
-                  <Sparkles className="size-6" />
+                  <FileText className="size-6" />
                   <p className="text-sm">Pick an option and go.</p>
                 </div>
               )}
             </div>
 
             <Button onClick={go} disabled={isWorking || outOfCredits} size="lg" className="w-full">
-              {isWorking ? <Spinner className="size-4" /> : result ? <RefreshCw /> : <Sparkles />}
+              {isWorking ? <Spinner className="size-4" /> : result ? <RefreshCw /> : <FileText />}
               {isWorking ? "Working…" : result ? `${actionLabel} again` : actionLabel}
             </Button>
           </div>

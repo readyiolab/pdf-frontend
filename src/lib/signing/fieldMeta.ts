@@ -23,6 +23,8 @@ export interface FieldMeta {
   /** Grouping in the palette. */
   group: "signature" | "recipient" | "input";
   hint: string;
+  /** When true, omit from the designer palette (type may still exist in data). */
+  hidden?: boolean;
 }
 
 /**
@@ -110,6 +112,8 @@ export const FIELD_META: Record<SignFieldType, FieldMeta> = {
     icon: Paperclip,
     group: "input",
     hint: "Asks the recipient to upload a supporting file.",
+    /** Not offered in the palette until upload-to-S3 stamping ships. */
+    hidden: true,
   },
   IMAGE: {
     label: "Image",
