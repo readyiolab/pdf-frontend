@@ -344,7 +344,7 @@ export const ToolWorkspace: React.FC<ToolWorkspaceProps> = ({ toolId }) => {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] w-full flex-col overflow-hidden sm:h-[calc(100dvh-4rem)]">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-1 border-b border-border bg-card px-2 py-1.5 md:hidden">
         <button
           type="button"
