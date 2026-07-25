@@ -28,15 +28,12 @@ export const AuthForm: React.FC<AuthFormProps> = ({
   const { login, register, googleLogin, guestSession } = useAuth();
   const navigate = useNavigate();
 
-  const finish = (opts?: { needsVerify?: boolean }) => {
+  const finish = (_opts?: { needsVerify?: boolean }) => {
     if (onSuccess) {
       onSuccess();
       return;
     }
-    if (opts?.needsVerify) {
-      navigate("/verify-email");
-      return;
-    }
+    // Always land in workspace — email verification is optional until e-sign/AI/billing.
     navigate("/workspace");
   };
 
@@ -63,7 +60,7 @@ export const AuthForm: React.FC<AuthFormProps> = ({
         finish();
       } else {
         await register(email, name, password);
-        toast.success("Account created — check your email to verify.");
+        toast.success("Account created! You can verify your email later from Profile.");
         finish({ needsVerify: true });
       }
     } catch (err: any) {

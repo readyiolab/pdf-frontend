@@ -53,9 +53,7 @@ function App() {
 
                 <Route path="history" element={
                   <ProtectedRoute>
-                    <VerifiedRoute>
-                      <History />
-                    </VerifiedRoute>
+                    <History />
                   </ProtectedRoute>
                 } />
                 <Route path="billing" element={

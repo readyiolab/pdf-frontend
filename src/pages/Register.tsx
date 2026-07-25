@@ -23,7 +23,7 @@ export const Register: React.FC = () => {
           <AuthForm
             mode="register"
             onSwitchMode={(mode) => navigate(mode === "login" ? "/login" : "/register")}
-            onSuccess={() => navigate("/verify-email")}
+            onSuccess={() => navigate("/workspace")}
           />
         </div>
       </motion.div>

@@ -88,6 +88,18 @@ export const Profile: React.FC = () => {
             </div>
           </div>
 
+          {user.emailVerified === false && !user.isGuest && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 shadow-sm">
+              <h2 className="mb-1 text-base font-semibold text-foreground">Email not verified yet</h2>
+              <p className="mb-3 text-sm text-muted-foreground">
+                You can use the workspace now. Verify anytime to unlock e-sign, AI, and billing.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => navigate("/verify-email")}>
+                Verify email
+              </Button>
+            </div>
+          )}
+
           <div className="rounded-2xl border bg-card p-6 shadow-sm">
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />

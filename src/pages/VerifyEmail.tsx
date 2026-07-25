@@ -114,33 +114,30 @@ export default function VerifyEmailPage() {
     );
   }
 
-  // Idle — waiting for user to check inbox
+  // Idle — waiting for user to check inbox (optional — workspace is available now)
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center">
       <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10">
         <Mail className="size-7 text-primary" />
       </div>
-      <h1 className="text-xl font-semibold tracking-tight">Check your email</h1>
+      <h1 className="text-xl font-semibold tracking-tight">Verify when you’re ready</h1>
       <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
-        We sent a verification link to{" "}
+        We sent a link to{" "}
         <span className="font-medium text-foreground">{user?.email || "your inbox"}</span>.
-        Open it to unlock e-sign, AI tools, and billing.
+        You can use the workspace now — verify later to unlock e-sign, AI, and billing.
       </p>
       <p className="max-w-md text-xs text-muted-foreground">
-        Check spam/junk if you don’t see it within a minute. The link expires in 24 hours.
+        Check spam/junk if you don’t see it. The link expires in 24 hours.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-        <Button onClick={handleResend} disabled={resending || !token}>
+        <Button asChild>
+          <Link to="/workspace">Go to workspace</Link>
+        </Button>
+        <Button variant="outline" onClick={handleResend} disabled={resending || !token}>
           {resending ? <Spinner className="mr-2 size-4" /> : null}
           Resend email
         </Button>
-        <Button variant="outline" asChild>
-          <Link to="/workspace">Continue to workspace</Link>
-        </Button>
       </div>
-      <p className="pt-2 text-xs text-muted-foreground">
-        Basic PDF tools work before verification. Protected features need a verified email.
-      </p>
     </div>
   );
 }

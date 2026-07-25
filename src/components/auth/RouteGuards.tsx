@@ -20,8 +20,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Requires a verified email (Google / guest count as verified).
- * Unverified password users see a clear gate instead of a cryptic API 403.
+ * Gates e-sign / AI / billing behind a verified email (or a full non-guest account).
+ * Workspace and basic PDF tools stay available without verification.
  */
 export function VerifiedRoute({ children }: { children: React.ReactNode }) {
   const { token, user, loading } = useAuth();
@@ -35,19 +35,21 @@ export function VerifiedRoute({ children }: { children: React.ReactNode }) {
   }
   if (!token) return <Navigate to="/login" replace />;
 
-  // Guests are blocked from e-sign/AI by the API's requireFullAccount;
-  // show a friendly upgrade prompt rather than the verify screen.
   if (user?.isGuest) {
     return (
       <div className="mx-auto flex max-w-md flex-col items-center gap-4 px-4 py-16 text-center">
         <h1 className="text-xl font-semibold">Create a free account</h1>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Guest sessions can use basic PDF tools. E-sign and AI need a real account so we can
-          keep your documents safe and contact you if needed.
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Guest sessions can use basic PDF tools. E-sign and AI need a real account.
         </p>
-        <Button asChild>
-          <Link to="/register">Create account</Link>
-        </Button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button asChild>
+            <Link to="/register">Create account</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/workspace">Back to workspace</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -58,14 +60,19 @@ export function VerifiedRoute({ children }: { children: React.ReactNode }) {
         <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10">
           <Mail className="size-7 text-primary" />
         </div>
-        <h1 className="text-xl font-semibold">Verify your email to continue</h1>
-        <p className="text-sm text-muted-foreground leading-relaxed">
+        <h1 className="text-xl font-semibold">Verify your email to unlock this</h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">
           We sent a link to <span className="font-medium text-foreground">{user.email}</span>.
-          Open it to unlock this feature.
+          You can keep using the workspace and verify whenever you’re ready.
         </p>
-        <Button asChild>
-          <Link to="/verify-email">Open verification page</Link>
-        </Button>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button asChild>
+            <Link to="/workspace">Continue to workspace</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/verify-email">Verify now</Link>
+          </Button>
+        </div>
       </div>
     );
   }
