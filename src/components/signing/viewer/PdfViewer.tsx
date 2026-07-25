@@ -113,13 +113,13 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     const swap = rotation % 180 !== 0;
     const pw = swap ? basePage.height : basePage.width;
     const ph = swap ? basePage.width : basePage.height;
-    // 48px of breathing room so pages don't collide with the scrollbar.
-    const available = containerWidth - 48;
+    // 24px breathing room so pages don't collide with the scrollbar / edge.
+    const available = Math.max(120, containerWidth - 24);
 
     const next =
       fitMode === "width"
         ? available / pw
-        : Math.min(available / pw, (containerHeight - 48) / ph);
+        : Math.min(available / pw, (containerHeight - 24) / ph);
 
     setScale(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next)));
   }, [fitMode, containerWidth, containerHeight, basePage, rotation]);
@@ -346,15 +346,25 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
           {pdf && (
             // Absolute positioning against a fixed-height spacer: pages that
             // aren't rendered still occupy their exact slot, so the scrollbar
-            // never jumps as pages mount and unmount.
-            <div className="relative mx-auto" style={{ height: totalHeight, paddingTop: PAGE_GAP }}>
+            // never jumps as pages mount and unmount. Width matches the scaled
+            // page so mx-auto truly centers and fit-width fills the pane.
+            <div
+              className="relative mx-auto"
+              style={{
+                height: totalHeight,
+                paddingTop: PAGE_GAP,
+                width: basePage
+                  ? (rotation % 180 !== 0 ? basePage.height : basePage.width) * scale
+                  : undefined,
+              }}
+            >
               {pageOffsets.map((offset, i) => {
                 const pageNumber = i + 1;
                 const inRange = pageNumber >= visibleRange.start && pageNumber <= visibleRange.end;
                 return (
                   <div
                     key={pageNumber}
-                    className="absolute left-0 right-0"
+                    className="absolute left-0 right-0 flex justify-center"
                     style={{ top: offset.top + PAGE_GAP, height: offset.height }}
                   >
                     <PdfPage

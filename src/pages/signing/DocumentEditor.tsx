@@ -542,22 +542,18 @@ export default function DocumentEditor() {
 
       {/* --- Body --- */}
       {isDraft ? (
-        // DRAFT: the full designer (place fields, assign recipients).
+        // DRAFT: fields left · PDF center · people (+ field settings) right.
         <div className="relative flex min-h-0 flex-1">
-          {/* Desktop left rail — hidden below lg */}
-          <div className="hidden w-52 shrink-0 flex-col overflow-hidden border-r border-border bg-card lg:flex">
-            <RecipientPanel {...recipientPanelProps} />
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <FieldPalette
-                activeRecipient={recipients.find((r) => r.id === activeRecipientId)}
-                readOnly={readOnly}
-                onQuickAdd={handleQuickAdd}
-                className="h-full w-full border-0"
-              />
-            </div>
+          <div className="hidden w-56 shrink-0 flex-col overflow-hidden border-r border-border bg-card lg:flex">
+            <FieldPalette
+              activeRecipient={recipients.find((r) => r.id === activeRecipientId)}
+              readOnly={readOnly}
+              onQuickAdd={handleQuickAdd}
+              className="h-full w-full border-0"
+            />
           </div>
 
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-muted/40">
             <PdfViewer
               ref={viewerRef}
               source={fileUrl}
@@ -566,15 +562,12 @@ export default function DocumentEditor() {
               pagesWithFields={designer.pagesWithFields}
               onPageChange={setCurrentPage}
               onPageCountChange={(count) => {
-                // The server stores an advisory page count from upload; correct it
-                // once pdf.js has authoritatively parsed the file.
                 if (document.pageCount !== count) {
                   setDocument((d) => (d ? { ...d, pageCount: count } : d));
                 }
               }}
             />
 
-            {/* Mobile / tablet action bar — PDF stays primary above */}
             <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-around gap-1 border-t border-border bg-card/95 px-2 py-2 backdrop-blur-sm lg:hidden">
               <Button
                 variant="outline"
@@ -585,7 +578,9 @@ export default function DocumentEditor() {
                 <Users className="size-3.5" />
                 People
                 {recipients.length > 0 && (
-                  <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums">{recipients.length}</span>
+                  <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums">
+                    {recipients.length}
+                  </span>
                 )}
               </Button>
               <Button
@@ -612,14 +607,33 @@ export default function DocumentEditor() {
             </div>
           </div>
 
-          {/* Desktop properties — progressive disclosure; hidden below lg */}
-          <div className="hidden lg:contents">
-            <PropertiesPanel {...propertiesPanelProps} hideWhenEmpty />
-          </div>
+          {/* Right rail fills the empty third — who signs always visible */}
+          <aside className="hidden w-72 shrink-0 flex-col overflow-hidden border-l border-border bg-card lg:flex xl:w-80">
+            <div
+              className={cn(
+                "min-h-0 overflow-y-auto",
+                designer.selectedIds.length > 0 ? "max-h-[45%]" : "flex-1"
+              )}
+            >
+              <RecipientPanel {...recipientPanelProps} className="border-b-0" />
+            </div>
+            {designer.selectedIds.length > 0 ? (
+              <div className="min-h-0 flex-1 overflow-hidden border-t border-border">
+                <PropertiesPanel {...propertiesPanelProps} className="h-full w-full border-0" />
+              </div>
+            ) : (
+              <div className="flex flex-1 flex-col justify-end gap-2 border-t border-border/70 px-4 py-5">
+                <p className="text-xs font-semibold text-foreground">Next: place fields</p>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Add a person here, then drag Signature or Date from the left onto the PDF. Select a
+                  field to edit it in this panel.
+                </p>
+              </div>
+            )}
+          </aside>
 
-          {/* People sheet */}
           <Sheet open={peopleOpen} onOpenChange={setPeopleOpen}>
-            <SheetContent side="left" className="w-[min(100%,20rem)] p-0 sm:max-w-sm">
+            <SheetContent side="right" className="w-[min(100%,20rem)] p-0 sm:max-w-sm">
               <SheetHeader className="border-b border-border px-4 py-3 text-left">
                 <SheetTitle>Who signs</SheetTitle>
                 <SheetDescription>Add the people who need to sign or approve.</SheetDescription>
@@ -630,7 +644,6 @@ export default function DocumentEditor() {
             </SheetContent>
           </Sheet>
 
-          {/* Fields sheet */}
           <Sheet open={fieldsOpen} onOpenChange={setFieldsOpen}>
             <SheetContent side="bottom" className="flex h-[min(70vh,28rem)] flex-col p-0">
               <SheetHeader className="border-b border-border px-4 py-3 text-left">
@@ -641,14 +654,16 @@ export default function DocumentEditor() {
                 <FieldPalette
                   activeRecipient={recipients.find((r) => r.id === activeRecipientId)}
                   readOnly={readOnly}
-                  onQuickAdd={handleQuickAdd}
+                  onQuickAdd={(type) => {
+                    handleQuickAdd(type);
+                    setFieldsOpen(false);
+                  }}
                   className="h-full w-full border-0"
                 />
               </div>
             </SheetContent>
           </Sheet>
 
-          {/* Settings / properties sheet */}
           <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
             <SheetContent side="right" className="flex w-[min(100%,20rem)] flex-col p-0 sm:max-w-sm">
               <SheetHeader className="border-b border-border px-4 py-3 text-left">
@@ -656,19 +671,27 @@ export default function DocumentEditor() {
                 <SheetDescription>Who fills this in, and whether it is required.</SheetDescription>
               </SheetHeader>
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <PropertiesPanel
-                  {...propertiesPanelProps}
-                  className="h-full w-full border-0"
-                />
+                <PropertiesPanel {...propertiesPanelProps} className="h-full w-full border-0" />
               </div>
             </SheetContent>
           </Sheet>
         </div>
       ) : (
-        // SENT / COMPLETED / DECLINED: the tracker replaces the designer — there
-        // is nothing left to design, only progress to watch and results to fetch.
-        <div className="min-h-0 flex-1 overflow-hidden bg-muted/30">
-          <StatusTracker documentId={id} />
+        // SENT / COMPLETED: PDF + tracker side by side (same language as draft).
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1 bg-muted/40">
+            <PdfViewer
+              ref={viewerRef}
+              source={fileUrl}
+              className="h-full"
+              renderPageOverlay={renderPageOverlay}
+              pagesWithFields={designer.pagesWithFields}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+          <div className="w-full shrink-0 overflow-y-auto border-l border-border bg-card p-4 sm:w-80 lg:w-96">
+            <StatusTracker documentId={id} />
+          </div>
         </div>
       )}
 
