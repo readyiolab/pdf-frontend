@@ -38,6 +38,8 @@ export interface SignViewField {
     placeholder?: string;
     defaultValue?: string;
     options?: string[];
+    /** RADIO exclusive group; falls back to label when unset. */
+    group?: string;
     validation?: { minLength?: number; maxLength?: number; min?: number; max?: number; pattern?: string };
     font?: { size?: number; color?: string; align?: string };
     dateFormat?: string;

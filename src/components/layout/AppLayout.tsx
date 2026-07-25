@@ -1,16 +1,10 @@
 import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Navbar } from "./Navbar";
-import { Sidebar } from "./Sidebar";
 import { Footer } from "./Footer";
 
 export const AppLayout: React.FC = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const location = useLocation();
-
-  React.useEffect(() => {
-    setIsSidebarOpen(false);
-  }, [location.pathname]);
 
   const isHome = location.pathname === "/";
   const isEsignEditor = /^\/sign\/[^/]+$/.test(location.pathname);
@@ -24,15 +18,9 @@ export const AppLayout: React.FC = () => {
         <div className="absolute bottom-[10%] -left-[8%] h-[380px] w-[380px] rounded-full bg-[radial-gradient(circle,oklch(0.85_0.04_250/0.15),transparent_70%)] blur-2xl" />
       </div>
 
-      {!isEsignEditor && (
-        <Navbar onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-      )}
+      {!isEsignEditor && <Navbar />}
 
       <div className={`flex flex-1 mx-auto w-full ${isEsignEditor ? "max-w-none" : "max-w-[1600px]"}`}>
-        {!isEsignEditor && (
-          <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-        )}
-
         <main className="flex-1 flex flex-col min-w-0">
           <div
             className={
@@ -50,5 +38,3 @@ export const AppLayout: React.FC = () => {
     </div>
   );
 };
-
-export default AppLayout;
