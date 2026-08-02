@@ -12,6 +12,7 @@ const Workspace = lazy(() => import("./pages/Workspace"));
 const History = lazy(() => import("./pages/History"));
 const Billing = lazy(() => import("./pages/Billing"));
 const Profile = lazy(() => import("./pages/Profile"));
+const CloudStorage = lazy(() => import("./pages/settings/CloudStorage"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
@@ -25,6 +26,7 @@ const ExplainPdf = lazy(() => import("./pages/ai/ExplainPdf"));
 const ChatPdf = lazy(() => import("./pages/ai/ChatPdf"));
 
 const InfoPage = lazy(() => import("./pages/info/InfoPage"));
+const EnterpriseByoc = lazy(() => import("./pages/enterprise/EnterpriseByoc"));
 
 const PageLoader = () => (
   <div className="flex min-h-[50vh] items-center justify-center animate-fade-in">
@@ -66,6 +68,11 @@ function App() {
                 <Route path="profile" element={
                   <ProtectedRoute>
                     <Profile />
+                  </ProtectedRoute>
+                } />
+                <Route path="settings/cloud" element={
+                  <ProtectedRoute>
+                    <CloudStorage />
                   </ProtectedRoute>
                 } />
 
@@ -113,7 +120,7 @@ function App() {
                   </ProtectedRoute>
                 } />
 
-                <Route path="enterprise" element={<InfoPage type="enterprise" />} />
+                <Route path="enterprise" element={<EnterpriseByoc />} />
                 <Route path="security" element={<InfoPage type="security" />} />
                 <Route path="developer" element={<InfoPage type="developer" />} />
                 <Route path="api-docs" element={<InfoPage type="developer" />} />

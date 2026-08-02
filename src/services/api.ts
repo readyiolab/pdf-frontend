@@ -225,4 +225,23 @@ export const apiService = {
 
   syncCloudWorkspace: () =>
     apiFetch("/cloud/sync", { method: "POST" }),
+
+  // Enterprise BYOC (customer)
+  getEnterpriseOrganization: () =>
+    apiFetch("/enterprise/organization", { method: "GET" }),
+
+  getEnterpriseStorage: () =>
+    apiFetch("/enterprise/storage", { method: "GET" }),
+
+  testEnterpriseStorage: (body: Record<string, unknown>) =>
+    apiFetch("/enterprise/storage/test", { method: "POST", body: JSON.stringify(body) }),
+
+  saveEnterpriseStorage: (body: Record<string, unknown>) =>
+    apiFetch("/enterprise/storage", { method: "PUT", body: JSON.stringify(body) }),
+
+  resetEnterpriseStorage: () =>
+    apiFetch("/enterprise/storage", { method: "DELETE" }),
+
+  getEnterpriseAudit: (limit = 50) =>
+    apiFetch(`/enterprise/audit?limit=${limit}`, { method: "GET" }),
 };

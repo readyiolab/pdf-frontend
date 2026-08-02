@@ -1,10 +1,9 @@
-import { ShieldCheck, Code, BookOpen, Lock, FileText, CheckCircle2, ArrowRight, Building2, HelpCircle } from "lucide-react";
+import { ShieldCheck, Code, BookOpen, Lock, FileText, CheckCircle2, ArrowRight, HelpCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
 interface InfoPageProps {
   type:
-    | "enterprise"
     | "security"
     | "developer"
     | "blog"
@@ -16,30 +15,6 @@ interface InfoPageProps {
 }
 
 const PAGE_DATA = {
-  enterprise: {
-    badge: "Enterprise Platform",
-    title: "Enterprise Document SaaS & AI Integration",
-    subtitle:
-      "Empower your enterprise workforce with bank-grade encryption, custom SSO, and dedicated cloud workers.",
-    icon: Building2,
-    sections: [
-      {
-        heading: "Custom Dedicated Infrastructure",
-        content:
-          "Run isolated PDF worker nodes deployed in your preferred geographic location with guaranteed SLAs and zero queue times.",
-      },
-      {
-        heading: "SSO & Identity Governance",
-        content:
-          "SAML 2.0, Okta, Azure AD, and Google Workspace integrations with granular role-based permissions.",
-      },
-      {
-        heading: "Custom SLA & 24/7 Dedicated Support",
-        content:
-          "Dedicated account management, custom contract terms, and guaranteed 99.99% uptime availability.",
-      },
-    ],
-  },
   security: {
     badge: "Security & Trust",
     title: "Bank-Grade Encryption & Data Protection",

@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Spinner } from "../components/ui/spinner";
-import { User, Mail, CreditCard, Clock, LogOut, Shield, Copy, Check } from "lucide-react";
+import { User, Mail, CreditCard, Clock, LogOut, Shield, Copy, Check, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -143,6 +143,12 @@ export const Profile: React.FC = () => {
               {user.plan === "FREE" && (
                 <Button size="sm" className="rounded-lg shadow-sm" onClick={() => navigate("/billing")}>
                   Upgrade
+                </Button>
+              )}
+              {user.plan === "ENTERPRISE" && (
+                <Button size="sm" variant="outline" className="rounded-lg" onClick={() => navigate("/settings/cloud")}>
+                  <Cloud className="mr-1.5 h-4 w-4" />
+                  Cloud storage
                 </Button>
               )}
             </div>
