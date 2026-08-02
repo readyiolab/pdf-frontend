@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -9,12 +9,12 @@ import {
   ArrowLeft,
   Server,
 } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext";
-import { apiService } from "../services/api";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Spinner } from "../components/ui/spinner";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiService } from "@/services/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ProviderLogo } from "@/components/byoc/ProviderLogo";
 import type { ProviderLogoId } from "@/components/byoc/motion";
@@ -294,7 +294,7 @@ export default function CloudStorageSettings() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label>{provider === "AZURE_BLOB" ? "Container name" : "Bucket name"}</Label>
-              <Input value={bucket} onChange={(e) => setBucket(e.target.value)} placeholder="my-pdf-bucket" />
+              <Input value={bucket} onChange={(e: ChangeEvent<HTMLInputElement>) => setBucket(e.target.value)} placeholder="my-pdf-bucket" />
             </div>
             {provider !== "AZURE_BLOB" && (
               <>
@@ -302,7 +302,7 @@ export default function CloudStorageSettings() {
                   <Label>Region</Label>
                   <Input
                     value={region}
-                    onChange={(e) => setRegion(e.target.value)}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setRegion(e.target.value)}
                     placeholder={provider === "R2" ? "auto" : "us-east-1"}
                   />
                 </div>
@@ -310,7 +310,7 @@ export default function CloudStorageSettings() {
                   <Label>Endpoint {provider === "AWS_S3" ? "(optional)" : ""}</Label>
                   <Input
                     value={endpoint}
-                    onChange={(e) => setEndpoint(e.target.value)}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEndpoint(e.target.value)}
                     placeholder={
                       provider === "R2"
                         ? "https://<accountid>.r2.cloudflarestorage.com"
@@ -331,7 +331,7 @@ export default function CloudStorageSettings() {
                 <Input
                   type="password"
                   value={connectionString}
-                  onChange={(e) => setConnectionString(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setConnectionString(e.target.value)}
                   placeholder={storage?.hasSecret ? "•••• saved — leave blank to keep" : "DefaultEndpointsProtocol=…"}
                 />
               </div>
@@ -339,14 +339,14 @@ export default function CloudStorageSettings() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Account name</Label>
-                  <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+                  <Input value={accountName} onChange={(e: ChangeEvent<HTMLInputElement>) => setAccountName(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>Account key</Label>
                   <Input
                     type="password"
                     value={accountKey}
-                    onChange={(e) => setAccountKey(e.target.value)}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setAccountKey(e.target.value)}
                     placeholder={storage?.hasSecret ? "•••• saved" : ""}
                   />
                 </div>
@@ -358,7 +358,7 @@ export default function CloudStorageSettings() {
                 <Label>Access key ID {provider === "GCS" ? "(HMAC)" : ""}</Label>
                 <Input
                   value={accessKeyId}
-                  onChange={(e) => setAccessKeyId(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setAccessKeyId(e.target.value)}
                   placeholder={storage?.hasSecret ? "•••• saved — leave blank to keep" : ""}
                   autoComplete="off"
                 />
@@ -368,7 +368,7 @@ export default function CloudStorageSettings() {
                 <Input
                   type="password"
                   value={secretAccessKey}
-                  onChange={(e) => setSecretAccessKey(e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSecretAccessKey(e.target.value)}
                   placeholder={storage?.hasSecret ? "•••• saved" : ""}
                   autoComplete="off"
                 />
