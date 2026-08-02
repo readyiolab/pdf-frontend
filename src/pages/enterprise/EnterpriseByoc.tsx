@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion, useScroll, useTransform } from "framer-motion";
 import {
   ArrowRight,
@@ -10,7 +10,6 @@ import {
   Landmark,
   Scale,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -65,7 +64,7 @@ const USE_CASES = [
   {
     icon: Building2,
     title: "Public sector",
-    body: "Meet data-residency rules by pointing BYOC at a bucket in your approved cloud region.",
+    body: "Meet data-residency rules by pointing storage at a bucket in your approved cloud region.",
   },
 ];
 
@@ -119,7 +118,9 @@ export default function EnterpriseByoc() {
 
   const isEnterprise = user?.plan === "ENTERPRISE";
   const primaryPath = isEnterprise ? "/settings/cloud" : "/billing";
-  const primaryLabel = isEnterprise ? "Open cloud storage" : "Talk to us / view plans";
+  const primaryLabel = isEnterprise ? "Connect your bucket" : "See Enterprise plans";
+  const secondaryPath = isEnterprise ? "/workspace" : "/sign";
+  const secondaryLabel = isEnterprise ? "Back to workspace" : "Try eSign first";
 
   return (
     <div className="flex w-full flex-col overflow-x-hidden bg-[#F7F9FC] text-slate-900">
@@ -133,28 +134,29 @@ export default function EnterpriseByoc() {
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse 80% 60% at 70% 0%, rgba(14,165,233,0.14), transparent 55%), radial-gradient(ellipse 50% 40% at 10% 80%, rgba(37,99,235,0.08), transparent 50%), linear-gradient(180deg, #F7F9FC 0%, #EEF4FB 45%, #F7F9FC 100%)",
+              "radial-gradient(ellipse 70% 55% at 18% 20%, rgba(14,165,233,0.12), transparent 55%), radial-gradient(ellipse 45% 40% at 40% 90%, rgba(37,99,235,0.07), transparent 50%), linear-gradient(165deg, #F7F9FC 0%, #EEF4FB 42%, #F7F9FC 100%)",
           }}
         />
-        <div className="relative mx-auto max-w-6xl px-4 pb-16 pt-28 sm:px-6 sm:pb-20 sm:pt-32 lg:px-8">
+
+        <div className="relative mx-auto grid max-w-[1600px] items-center gap-8 px-4 pb-14 pt-28 sm:gap-10 sm:px-6 sm:pb-16 sm:pt-32 lg:grid-cols-2 lg:gap-12 lg:px-8 lg:pb-20 xl:gap-16">
           <motion.div
-            className="mx-auto max-w-3xl text-center"
+            className="relative z-10 w-full"
             initial={{ opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: BYOC_EASE }}
           >
             <p className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">
               <Cloud className="h-3.5 w-3.5" />
-              Enterprise · Bring Your Own Cloud
+              Enterprise · Your own cloud
             </p>
-            <h1 className="font-heading mt-5 text-balance text-3xl font-bold tracking-tight text-slate-900 sm:text-5xl sm:leading-[1.08]">
+            <h1 className="font-heading mt-5 text-balance text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl sm:leading-[1.1] lg:text-[2.75rem] xl:text-5xl">
               Your PDFs stay in your bucket. We never keep the bytes.
             </h1>
-            <p className="mx-auto mt-4 max-w-xl text-pretty text-base leading-relaxed text-slate-500 sm:text-lg">
+            <p className="mt-4 max-w-xl text-pretty text-base leading-relaxed text-slate-500 sm:text-lg">
               Connect AWS, Azure, Cloudflare R2, GCS, or MinIO. Browser uploads go straight to your
               storage. Auth, jobs, and signing metadata stay on PDFToolkit.
             </p>
-            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
                 className="h-12 cursor-pointer rounded-full bg-blue-600 px-8 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700"
@@ -175,7 +177,7 @@ export default function EnterpriseByoc() {
               </Button>
             </div>
             <AnimatedChecks
-              className="mx-auto mt-10 max-w-md text-left"
+              className="mt-9"
               variant="light"
               items={[
                 "Presigned PUT — files never transit our disk",
@@ -183,12 +185,38 @@ export default function EnterpriseByoc() {
                 "Operators never see your raw credentials",
               ]}
             />
+            <ProviderChips variant="light" className="mt-8" />
           </motion.div>
 
-          <motion.div className="relative mx-auto mt-12 max-w-4xl" style={{ y: diagramY }}>
-            <ByocFlowDiagram variant="light" />
-            <ProviderChips variant="light" className="mt-4 justify-center" />
+          <motion.div
+            className="relative w-full"
+            style={{ y: diagramY }}
+            initial={{ opacity: 0, x: 28 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.75, delay: 0.12, ease: BYOC_EASE }}
+          >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-sky-400/25 via-blue-500/10 to-transparent blur-2xl lg:-inset-6"
+            />
+            <div className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden  sm:rounded-[2rem] lg:aspect-auto lg:min-h-[32rem] xl:min-h-[36rem]">
+              <img
+                src="/image.png"
+                alt="Your storage, secure processing, files stay in your cloud — AWS, Azure, Google Cloud"
+                width={1600}
+                height={1200}
+                className="h-full w-full object-contain object-center p-3 sm:p-4 lg:p-5"
+                decoding="async"
+                fetchPriority="high"
+              />
+            </div>
           </motion.div>
+        </div>
+
+        <div className="relative border-t border-slate-200/60 bg-white/50 py-10 backdrop-blur-sm sm:py-12">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <ByocFlowDiagram variant="light" />
+          </div>
         </div>
       </section>
 
@@ -239,7 +267,7 @@ export default function EnterpriseByoc() {
               Built for trust
             </p>
             <h2 className="font-heading text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Where BYOC earns its keep
+              Who this is for
             </h2>
           </div>
 
@@ -284,8 +312,7 @@ export default function EnterpriseByoc() {
                 What you need to connect
               </h2>
               <p className="mt-3 text-base text-slate-500">
-                Sourced from our production BYOC requirements — endpoint shape and credential type
-                per provider.
+                Endpoint shape and credential type for each provider we support in production.
               </p>
             </div>
             <ProviderChips variant="light" />
@@ -343,43 +370,130 @@ export default function EnterpriseByoc() {
       </section>
 
       {/* Closing CTA */}
-      <section className="w-full py-20 sm:py-24">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-slate-900 px-6 py-12 text-center shadow-2xl shadow-slate-900/20 sm:px-12 sm:py-14">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background:
-                  "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(14,165,233,0.25), transparent 60%)",
-              }}
-            />
-            <ShieldCheck className="relative mx-auto h-10 w-10 text-sky-400" />
-            <h2 className="font-heading relative mt-4 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              Ready to keep documents in your cloud?
-            </h2>
-            <p className="relative mx-auto mt-3 max-w-md text-sm text-slate-300 sm:text-base">
-              {isEnterprise
-                ? "Open Cloud storage, run Test Connection, apply CORS if prompted, and Save."
-                : "Enterprise unlocks BYOC. View plans or ask us to provision your organization."}
+      <section className="relative w-full overflow-hidden border-t border-slate-200/70">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 70% 80% at 0% 50%, rgba(14,165,233,0.22), transparent 55%), radial-gradient(ellipse 55% 70% at 100% 40%, rgba(37,99,235,0.18), transparent 50%), linear-gradient(165deg, #0B1220 0%, #0F172A 48%, #111827 100%)",
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.12) 1px, transparent 1px)",
+            backgroundSize: "64px 64px",
+            maskImage: "radial-gradient(ellipse 70% 80% at 50% 50%, black, transparent)",
+          }}
+        />
+
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 sm:py-28 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={BYOC_VIEWPORT}
+            transition={{ duration: 0.55, ease: BYOC_EASE }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300/90">
+              Next step
             </p>
-            <div className="relative mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <h2 className="font-heading mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl sm:leading-[1.12]">
+              {isEnterprise
+                ? "Point PDFToolkit at your bucket — then keep working."
+                : "Your files. Your cloud. Same calm workspace."}
+            </h2>
+            <p className="mt-4 max-w-lg text-pretty text-base leading-relaxed text-slate-300 sm:text-lg">
+              {isEnterprise
+                ? "Open Cloud storage, run the connection test, fix CORS if we ask, then Save. New uploads and signed PDFs write straight to you."
+                : "Enterprise lets you connect AWS, Azure, R2, GCS, or MinIO so PDFs never sit in our object store — only keys and workflow metadata do."}
+            </p>
+
+            <div className="mt-9 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
-                className="h-12 cursor-pointer rounded-full bg-sky-500 px-8 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-500/25 hover:bg-sky-400"
+                className="h-12 cursor-pointer rounded-full bg-sky-400 px-7 text-sm font-semibold text-slate-950 shadow-lg shadow-sky-400/25 hover:bg-sky-300"
                 onClick={() => navigate(primaryPath)}
               >
                 {primaryLabel}
-                <Sparkles className="ml-1.5 h-4 w-4" />
+                <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
-              <Link
-                to="/#byoc"
-                className="text-sm font-semibold text-sky-300 hover:text-sky-200"
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-12 cursor-pointer rounded-full border-slate-500/80 bg-transparent px-7 text-sm font-semibold text-slate-100 hover:bg-white/5 hover:text-white"
+                onClick={() => navigate(secondaryPath)}
               >
-                Back to homepage BYOC
-              </Link>
+                {secondaryLabel}
+              </Button>
             </div>
-          </div>
+
+            <button
+              type="button"
+              onClick={() => navigate("/#byoc")}
+              className="mt-6 inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium text-slate-400 transition-colors hover:text-sky-300"
+            >
+              See it on the homepage
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </motion.div>
+
+          <motion.div
+            className="relative"
+            initial={{ opacity: 0, y: 22 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={BYOC_VIEWPORT}
+            transition={{ duration: 0.55, delay: 0.08, ease: BYOC_EASE }}
+          >
+            <div className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-sky-500/20 to-blue-600/10 blur-2xl" />
+            <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm sm:p-7">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Bytes stay with you</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    Browser → your bucket. We keep auth, jobs, and signing status only.
+                  </p>
+                </div>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-300 ring-1 ring-sky-400/30">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
+              </div>
+
+              <div className="mt-6 grid grid-cols-5 gap-2">
+                {PROVIDER_CHIPS.map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    title={p.label}
+                    className="flex flex-col items-center gap-1.5 rounded-xl bg-white/[0.06] px-1 py-2.5 ring-1 ring-white/10"
+                    initial={{ opacity: 0, y: 8 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={BYOC_VIEWPORT}
+                    transition={{ delay: 0.12 + i * 0.05, duration: 0.35, ease: BYOC_EASE }}
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/95">
+                      <ProviderLogo id={p.id} className="h-4 w-4" />
+                    </span>
+                    <span className="text-[9px] font-semibold text-slate-400">{p.id}</span>
+                  </motion.div>
+                ))}
+              </div>
+
+              <ul className="mt-6 space-y-2.5 border-t border-white/10 pt-5">
+                {[
+                  "CORS checked before you can Save",
+                  "Keys encrypted — operators never see them",
+                  "Switch providers without orphaning files",
+                ].map((line) => (
+                  <li key={line} className="flex items-start gap-2.5 text-sm text-slate-300">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </motion.div>
         </div>
       </section>
     </div>

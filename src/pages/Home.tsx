@@ -32,8 +32,8 @@ const FAQS = [
     a: "Yes. Every document signed through eSign includes a cryptographic SHA-256 hash and a full audit trail record.",
   },
   {
-    q: "What is Bring Your Own Cloud (BYOC)?",
-    a: "On Enterprise, you point PDFToolkit at your own object storage. Uploads, signed documents, and job outputs land in your bucket — we keep metadata and auth on our side. You control retention, encryption keys, and region.",
+    q: "Can I store PDFs in my own cloud?",
+    a: "Yes — on Enterprise you connect AWS, Azure, Cloudflare R2, Google Cloud, or MinIO. Uploads and signed documents land in your bucket; we keep metadata and auth on our side. You control retention, encryption keys, and region.",
   },
   {
     q: "Are my documents kept private and secure?",
@@ -72,7 +72,7 @@ export const Home: React.FC = () => {
   const primaryCta = user ? "Open workspace" : "Start free";
   const primaryPath = "/workspace";
   const byocPath = user?.plan === "ENTERPRISE" ? "/settings/cloud" : "/enterprise";
-  const byocCta = user?.plan === "ENTERPRISE" ? "Open cloud storage" : "Explore Enterprise BYOC";
+  const byocCta = user?.plan === "ENTERPRISE" ? "Open cloud storage" : "Use your own cloud";
 
   const filteredTools = useMemo(
     () =>
@@ -168,7 +168,7 @@ export const Home: React.FC = () => {
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-sky-800 transition-colors hover:bg-sky-50"
                 >
                   <Cloud className="h-3.5 w-3.5" />
-                  Bring Your Own Cloud
+                  Use your own cloud
                 </button>
               </div>
             </motion.div>
@@ -633,15 +633,15 @@ export const Home: React.FC = () => {
             >
               <p className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 px-3 py-1 text-xs font-semibold text-sky-300 ring-1 ring-sky-400/30">
                 <Cloud className="h-3.5 w-3.5" />
-                Enterprise · BYOC
+                Enterprise · Your cloud
               </p>
               <h2 className="font-heading mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">
                 Keep files in your cloud — AWS, Azure, R2, GCS, or MinIO
               </h2>
               <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-300 sm:text-lg">
-                Bring Your Own Cloud for Enterprise. Uploads, eSign PDFs, and tool outputs write to
-                your bucket over a presigned PUT. We keep auth, jobs, and signing metadata — never
-                the file bytes in our object store.
+                Connect your own cloud storage on Enterprise. Uploads, eSign PDFs, and tool outputs
+                write to your bucket over a presigned PUT. We keep auth, jobs, and signing metadata —
+                never the file bytes in our object store.
               </p>
               <AnimatedChecks
                 className="mt-7"
@@ -756,7 +756,7 @@ export const Home: React.FC = () => {
               {
                 name: "Enterprise",
                 price: "Custom",
-                blurb: "BYOC storage, SLA & dedicated support",
+                blurb: "Your own cloud storage, SLA & dedicated support",
                 cta: "Learn more",
                 path: "/enterprise",
                 featured: false,
@@ -838,7 +838,7 @@ export const Home: React.FC = () => {
             FAQ
           </h2>
           <p className="mx-auto mt-3 max-w-md text-center text-sm text-slate-500">
-            Quick answers about privacy, BYOC, AI, and eSignatures.
+            Quick answers about privacy, your cloud storage, AI, and eSignatures.
           </p>
           <div className="mt-10 space-y-3">
             {FAQS.map((item, i) => {

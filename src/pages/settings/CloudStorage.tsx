@@ -396,7 +396,7 @@ export default function CloudStorageSettings() {
         </Button>
         {storage?.provider !== "PLATFORM" && provider !== "PLATFORM" && (
           <Button variant="ghost" disabled={!!busy} onClick={onReset}>
-            Disconnect BYOC
+            Disconnect cloud storage
           </Button>
         )}
       </div>

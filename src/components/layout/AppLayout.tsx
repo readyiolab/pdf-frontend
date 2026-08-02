@@ -8,25 +8,27 @@ export const AppLayout: React.FC = () => {
   const location = useLocation();
 
   const isHome = location.pathname === "/";
+  const isEnterprise = location.pathname === "/enterprise";
   const isEsignEditor = /^\/sign\/[^/]+$/.test(location.pathname);
   const isAiStudio = location.pathname.startsWith("/ai/");
   const isToolStudio = /^\/workspace\/[^/]+$/.test(location.pathname);
-  const isFullBleed = isHome || isEsignEditor || isAiStudio || isToolStudio;
+  const isFullBleed = isHome || isEnterprise || isEsignEditor || isAiStudio || isToolStudio;
   const hideChrome = isEsignEditor;
   const hideFooter = isEsignEditor || isAiStudio || isToolStudio;
   // Immersive panes: no decorative blobs, and the shell must fill the viewport
   // height so children using h-full / flex-1 actually stretch edge-to-edge.
   const isImmersive = isEsignEditor || isAiStudio || isToolStudio;
+  const isMarketingBleed = isHome || isEnterprise;
 
   return (
     <div
       className={cn(
         "relative flex flex-col text-foreground transition-colors duration-300",
         isImmersive ? "h-dvh overflow-hidden" : "min-h-screen",
-        isHome ? "bg-[#F7F9FC]" : "bg-background"
+        isMarketingBleed ? "bg-[#F7F9FC]" : "bg-background"
       )}
     >
-      {!isHome && !isImmersive && (
+      {!isMarketingBleed && !isImmersive && (
         <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
           <div className="absolute -top-[8%] left-1/2 h-[520px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,oklch(0.72_0.12_255/0.18),transparent_70%)] blur-2xl" />
           <div className="absolute top-[45%] -right-[10%] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,oklch(0.8_0.06_230/0.12),transparent_70%)] blur-2xl" />
