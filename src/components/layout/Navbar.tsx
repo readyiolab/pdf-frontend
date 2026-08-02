@@ -363,14 +363,12 @@ export const Navbar: React.FC = () => {
                     >
                       <History className="h-3.5 w-3.5 text-muted-foreground" /> History
                     </Link>
-                    {user.plan === "ENTERPRISE" && (
-                      <Link
-                        to="/settings/cloud"
-                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium hover:bg-muted"
-                      >
-                        <Cloud className="h-3.5 w-3.5 text-muted-foreground" /> Cloud storage
-                      </Link>
-                    )}
+                    <Link
+                      to={user.plan === "ENTERPRISE" ? "/settings/cloud" : "/enterprise"}
+                      className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium hover:bg-muted"
+                    >
+                      <Cloud className="h-3.5 w-3.5 text-muted-foreground" /> Your cloud
+                    </Link>
                     <Link
                       to="/billing"
                       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium hover:bg-muted"

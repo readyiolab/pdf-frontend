@@ -57,7 +57,7 @@ export const Profile: React.FC = () => {
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Account Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage your profile, API keys, and view your usage limits.
+          Manage your profile, API keys, cloud storage, and usage limits.
         </p>
       </div>
 
@@ -125,6 +125,52 @@ export const Profile: React.FC = () => {
               </Button>
             </div>
           </div>
+
+          <div className="rounded-2xl border border-sky-200/80 bg-gradient-to-br from-sky-50/80 to-white p-6 shadow-sm dark:border-sky-500/20 dark:from-sky-500/10 dark:to-card">
+            <h2 className="text-lg font-bold mb-2 flex items-center gap-2">
+              <Cloud className="h-5 w-5 text-sky-600" />
+              Your cloud storage
+            </h2>
+            {user.plan === "ENTERPRISE" ? (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Connect AWS, Azure, R2, GCS, or MinIO so uploads and signed PDFs write to your
+                  bucket — not ours.
+                </p>
+                <Button
+                  className="rounded-xl bg-sky-600 text-white hover:bg-sky-700"
+                  onClick={() => navigate("/settings/cloud")}
+                >
+                  <Cloud className="mr-1.5 h-4 w-4" />
+                  Connect / manage bucket
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Keep PDFs in <span className="font-medium text-foreground">your</span> AWS, Azure,
+                  R2, GCS, or MinIO bucket. This is included with the{" "}
+                  <span className="font-medium text-foreground">Enterprise</span> plan. Your current
+                  plan is <span className="font-semibold text-foreground">{user.plan}</span>.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    className="rounded-xl bg-sky-600 text-white hover:bg-sky-700"
+                    onClick={() => navigate("/enterprise")}
+                  >
+                    How your cloud works
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => navigate("/billing")}
+                  >
+                    Upgrade to Enterprise
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Right Column: Usage & Actions */}
@@ -145,10 +191,17 @@ export const Profile: React.FC = () => {
                   Upgrade
                 </Button>
               )}
-              {user.plan === "ENTERPRISE" && (
-                <Button size="sm" variant="outline" className="rounded-lg" onClick={() => navigate("/settings/cloud")}>
+              {(user.plan === "PRO" || user.plan === "ENTERPRISE") && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-lg"
+                  onClick={() =>
+                    navigate(user.plan === "ENTERPRISE" ? "/settings/cloud" : "/enterprise")
+                  }
+                >
                   <Cloud className="mr-1.5 h-4 w-4" />
-                  Cloud storage
+                  {user.plan === "ENTERPRISE" ? "Cloud storage" : "Your cloud"}
                 </Button>
               )}
             </div>

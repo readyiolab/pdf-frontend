@@ -195,16 +195,31 @@ export default function CloudStorageSettings() {
 
   if (!isEnterprise) {
     return (
-      <div className="mx-auto max-w-xl py-16 text-center animate-fade-in">
-        <Cloud className="mx-auto mb-4 h-10 w-10 text-muted-foreground" />
-        <h1 className="text-2xl font-bold tracking-tight">Cloud storage</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Bring-your-own-cloud storage is available on the Enterprise plan. Your files would stay in
-          your bucket — we only keep metadata.
-        </p>
-        <Button className="mt-6" onClick={() => navigate("/billing")}>
-          View plans
-        </Button>
+      <div className="mx-auto max-w-xl py-16 animate-fade-in">
+        <div className="rounded-3xl border border-sky-200/80 bg-gradient-to-br from-sky-50 to-white p-8 text-center shadow-sm dark:border-sky-500/20 dark:from-sky-500/10 dark:to-card">
+          <Cloud className="mx-auto mb-4 h-10 w-10 text-sky-600" />
+          <h1 className="text-2xl font-bold tracking-tight">Connect your own cloud</h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            On <span className="font-semibold text-foreground">Enterprise</span>, you point PDFToolkit
+            at your AWS, Azure, R2, GCS, or MinIO bucket. Uploads and signed PDFs go there directly.
+            Your plan is currently <span className="font-semibold text-foreground">{user?.plan ?? "FREE"}</span>.
+          </p>
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Button className="rounded-full bg-sky-600 hover:bg-sky-700" onClick={() => navigate("/billing")}>
+              Upgrade to Enterprise
+            </Button>
+            <Button variant="outline" className="rounded-full" onClick={() => navigate("/enterprise")}>
+              See how it works
+            </Button>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/profile")}
+            className="mt-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to account
+          </button>
+        </div>
       </div>
     );
   }
