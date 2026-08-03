@@ -27,6 +27,8 @@ const ChatPdf = lazy(() => import("./pages/ai/ChatPdf"));
 
 const InfoPage = lazy(() => import("./pages/info/InfoPage"));
 const EnterpriseByoc = lazy(() => import("./pages/enterprise/EnterpriseByoc"));
+const DesktopToolkit = lazy(() => import("./pages/desktop/DesktopToolkit"));
+const EsignLanding = lazy(() => import("./pages/esign/EsignLanding"));
 
 const PageLoader = () => (
   <div className="flex min-h-[50vh] items-center justify-center animate-fade-in">
@@ -76,13 +78,7 @@ function App() {
                   </ProtectedRoute>
                 } />
 
-                <Route path="esign" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <DocumentList />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
+                <Route path="esign" element={<EsignLanding />} />
                 <Route path="sign" element={
                   <ProtectedRoute>
                     <VerifiedRoute>
@@ -121,6 +117,7 @@ function App() {
                 } />
 
                 <Route path="enterprise" element={<EnterpriseByoc />} />
+                <Route path="desktop" element={<DesktopToolkit />} />
                 <Route path="security" element={<InfoPage type="security" />} />
                 <Route path="developer" element={<InfoPage type="developer" />} />
                 <Route path="api-docs" element={<InfoPage type="developer" />} />

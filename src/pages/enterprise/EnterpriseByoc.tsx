@@ -138,7 +138,7 @@ export default function EnterpriseByoc() {
           }}
         />
 
-        <div className="relative mx-auto grid max-w-[1600px] items-center gap-8 px-4 pb-14 pt-28 sm:gap-10 sm:px-6 sm:pb-16 sm:pt-32 lg:grid-cols-2 lg:gap-12 lg:px-8 lg:pb-20 xl:gap-16">
+        <div className="relative mx-auto grid max-w-6xl items-center gap-6 px-4 pb-14 pt-28 sm:gap-8 sm:px-6 sm:pb-16 sm:pt-32 lg:grid-cols-2 lg:gap-8 lg:px-8 lg:pb-20">
           <motion.div
             className="relative z-10 w-full"
             initial={{ opacity: 0, y: 22 }}
@@ -199,13 +199,13 @@ export default function EnterpriseByoc() {
               aria-hidden
               className="pointer-events-none absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-sky-400/25 via-blue-500/10 to-transparent blur-2xl lg:-inset-6"
             />
-            <div className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden  sm:rounded-[2rem] lg:aspect-auto lg:min-h-[32rem] xl:min-h-[36rem]">
+            <div className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden sm:rounded-[1.5rem] lg:aspect-auto lg:min-h-[28rem] xl:min-h-[30rem]">
               <img
                 src="/image.png"
                 alt="Your storage, secure processing, files stay in your cloud — AWS, Azure, Google Cloud"
                 width={1600}
                 height={1200}
-                className="h-full w-full object-contain object-center p-3 sm:p-4 lg:p-5"
+                className="h-full w-full object-contain object-center p-1 sm:p-2"
                 decoding="async"
                 fetchPriority="high"
               />

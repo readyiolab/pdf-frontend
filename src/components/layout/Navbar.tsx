@@ -21,6 +21,7 @@ import {
   History,
   Cloud,
   User as UserIcon,
+  Monitor,
 } from "lucide-react";
 import { useTheme } from "../theme-provider";
 import { TOOLS, TOOL_CATEGORIES, getToolRoute } from "@/lib/design-tokens";
@@ -297,6 +298,9 @@ export const Navbar: React.FC = () => {
               <Link to="/enterprise" className={linkClass("/enterprise")}>
                 Your cloud
               </Link>
+              <Link to="/desktop" className={linkClass("/desktop")}>
+                Desktop
+              </Link>
               <Link to="/billing" className={linkClass("/billing")}>
                 Pricing
               </Link>
@@ -443,6 +447,7 @@ export const Navbar: React.FC = () => {
                   { to: "/esign", match: "/esign", label: "eSign", icon: PenTool, tone: "text-blue-600" },
                   { to: "/ai/summarize", match: "/ai", label: "AI Suite", icon: Sparkles, tone: "text-fuchsia-500" },
                   { to: "/enterprise", match: "/enterprise", label: "Your cloud", icon: Cloud, tone: "text-sky-500" },
+                  { to: "/desktop", match: "/desktop", label: "Desktop", icon: Monitor, tone: "text-blue-600" },
                   { to: "/billing", match: "/billing", label: "Pricing", icon: Zap, tone: "text-amber-500" },
                 ].map((item) => {
                   const Icon = item.icon;

@@ -1,30 +1,40 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { TOOLS, TOOL_CATEGORIES, getToolRoute } from "@/lib/design-tokens";
 import {
   ArrowRight,
-  Check,
   ChevronDown,
   Cloud,
   FileSignature,
   FileText,
+  GitMerge,
   Hash,
   KeyRound,
   Lock,
-  Mail,
+  Minimize2,
+  Monitor,
+  Scissors,
   ShieldCheck,
   Sparkles,
   Users,
-  Zap,
+  WifiOff,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ByocFlowDiagram } from "@/components/byoc/ByocFlowDiagram";
 import { ProviderChips } from "@/components/byoc/ProviderChips";
 import { AnimatedChecks } from "@/components/byoc/AnimatedChecks";
 import { BYOC_EASE, BYOC_VIEWPORT } from "@/components/byoc/motion";
+import { DesktopAppMock } from "@/components/desktop/DesktopAppMock";
+import {
+  DESKTOP_EASE,
+  DESKTOP_VIEWPORT,
+  DOWNLOAD_MAILTO,
+} from "@/components/desktop/motion";
+import { EsignStatusMock } from "@/components/esign/EsignStatusMock";
 
 const FAQS = [
   {
@@ -45,6 +55,51 @@ const FAQS = [
   },
 ];
 
+const HERO_RAIL = [
+  { id: "merge", label: "Merge", icon: GitMerge },
+  { id: "split", label: "Split", icon: Scissors },
+  { id: "compress", label: "Compress", icon: Minimize2 },
+  { id: "esign", label: "eSign", icon: FileSignature },
+  { id: "ai", label: "AI", icon: Sparkles },
+  { id: "protect", label: "Protect", icon: Lock },
+] as const;
+
+const HERO_PANELS: Record<
+  (typeof HERO_RAIL)[number]["id"],
+  { title: string; meta: string; tone: string }
+> = {
+  merge: {
+    title: "Merge three contracts",
+    meta: "Contract_A.pdf · B.pdf · C.pdf",
+    tone: "Combining pages in order…",
+  },
+  split: {
+    title: "Split by page ranges",
+    meta: "Vendor_Agreement.pdf · 12 pages",
+    tone: "Extracting pages 1–4, 5–8…",
+  },
+  compress: {
+    title: "Compress for email",
+    meta: "Board_Pack.pdf · 28 MB → ~4 MB",
+    tone: "Optimizing images without wrecking text…",
+  },
+  esign: {
+    title: "Send for signature",
+    meta: "Vendor_Agreement.pdf · 3 recipients",
+    tone: "Waiting on A. Rivera · SHA-256 seal ready",
+  },
+  ai: {
+    title: "Summarize this PDF",
+    meta: "Q3_Policy.pdf · grounded answers only",
+    tone: "Key terms, risks, and next actions…",
+  },
+  protect: {
+    title: "Password protect",
+    meta: "HR_Offer.pdf · AES encryption",
+    tone: "Locking file before share…",
+  },
+};
+
 const HOME_CATEGORIES = ["All", ...TOOL_CATEGORIES.filter((c) => c !== "All")];
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -62,17 +117,42 @@ export const Home: React.FC = () => {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [toolCategory, setToolCategory] = useState("All");
+  const [activeTool, setActiveTool] = useState<(typeof HERO_RAIL)[number]["id"]>("esign");
   const byocSectionRef = useRef<HTMLElement>(null);
+  const desktopSectionRef = useRef<HTMLElement>(null);
+  const heroRef = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
     target: byocSectionRef,
     offset: ["start end", "end start"],
   });
+  const { scrollYProgress: desktopScrollY } = useScroll({
+    target: desktopSectionRef,
+    offset: ["start end", "end start"],
+  });
+  const { scrollYProgress: heroScrollY } = useScroll({
+    target: heroRef,
+    offset: ["start end", "end start"],
+  });
   const diagramY = useTransform(scrollYProgress, [0, 1], [18, -18]);
+  const desktopMockY = useTransform(desktopScrollY, [0, 1], [18, -18]);
+  const heroStageY = useTransform(heroScrollY, [0, 1], [16, -16]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setActiveTool((prev) => {
+        const idx = HERO_RAIL.findIndex((t) => t.id === prev);
+        return HERO_RAIL[(idx + 1) % HERO_RAIL.length].id;
+      });
+    }, 3200);
+    return () => window.clearInterval(id);
+  }, []);
 
   const primaryCta = user ? "Open workspace" : "Start free";
   const primaryPath = "/workspace";
   const byocPath = user?.plan === "ENTERPRISE" ? "/settings/cloud" : "/enterprise";
   const byocCta = user?.plan === "ENTERPRISE" ? "Open cloud storage" : "Use your own cloud";
+  const activePanel = HERO_PANELS[activeTool];
+  const ActiveIcon = HERO_RAIL.find((t) => t.id === activeTool)?.icon ?? FileSignature;
 
   const filteredTools = useMemo(
     () =>
@@ -84,64 +164,52 @@ export const Home: React.FC = () => {
 
   return (
     <div className="flex w-full flex-col overflow-x-hidden bg-[#F7F9FC] text-slate-900">
-      {/* ── Hero (extends under transparent navbar) ────────────────────────── */}
-      <section className="relative w-full min-h-[min(100svh,920px)] overflow-hidden -mt-14 sm:-mt-16">
+      {/* ── Hero — software stage (not marketing highlights) ──────────────── */}
+      <section
+        ref={heroRef}
+        className="relative w-full min-h-[min(100svh,980px)] overflow-hidden -mt-14 sm:-mt-16"
+      >
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse 90% 70% at 78% 8%, rgba(37,99,235,0.16), transparent 52%), radial-gradient(ellipse 55% 45% at 8% 88%, rgba(14,165,233,0.1), transparent 50%), radial-gradient(ellipse 40% 30% at 50% 50%, rgba(255,255,255,0.8), transparent 70%), linear-gradient(165deg, #F7F9FC 0%, #E8EEF8 42%, #F7F9FC 100%)",
+              "radial-gradient(ellipse 80% 55% at 50% 0%, rgba(37,99,235,0.14), transparent 55%), radial-gradient(ellipse 50% 40% at 100% 80%, rgba(14,165,233,0.1), transparent 50%), linear-gradient(180deg, #EEF3FA 0%, #F7F9FC 42%, #F7F9FC 100%)",
           }}
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.4]"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[55%] opacity-[0.35]"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(100,116,139,0.22) 1px, transparent 1px), linear-gradient(90deg, rgba(100,116,139,0.22) 1px, transparent 1px)",
-            backgroundSize: "72px 72px",
-            maskImage: "radial-gradient(ellipse 75% 65% at 50% 35%, black, transparent)",
+              "linear-gradient(rgba(100,116,139,0.16) 1px, transparent 1px), linear-gradient(90deg, rgba(100,116,139,0.16) 1px, transparent 1px)",
+            backgroundSize: "56px 56px",
+            maskImage: "linear-gradient(180deg, black, transparent)",
           }}
         />
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute -left-24 top-28 h-64 w-64 rounded-full bg-blue-400/20 blur-3xl"
-          animate={{ y: [0, 18, 0], opacity: [0.35, 0.55, 0.35] }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute -right-16 bottom-24 h-72 w-72 rounded-full bg-sky-300/25 blur-3xl"
-          animate={{ y: [0, -22, 0], opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
-        />
 
-        <div className="relative mx-auto flex min-h-[min(100svh,920px)] max-w-6xl flex-col justify-center px-4 pb-16 pt-24 sm:px-6 sm:pb-20 sm:pt-32 lg:px-8">
+        <div className="relative mx-auto grid min-h-[min(100svh,980px)] max-w-6xl items-center gap-8 px-4 pb-14 pt-28 sm:gap-10 sm:px-6 sm:pb-16 sm:pt-32 lg:grid-cols-[0.95fr_1.05fr] lg:gap-8 lg:px-8">
+          {/* Content */}
           <motion.div
-            className="mx-auto max-w-3xl text-center"
-            initial={{ opacity: 0, y: 28 }}
+            className="relative z-10 w-full"
+            initial={{ opacity: 0, y: 22 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease }}
+            transition={{ duration: 0.65, ease }}
           >
-            <p className="font-heading mb-4 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl md:text-[3.5rem] md:leading-[1.05]">
-              PDFToolkit
-            </p>
-
-            <h1 className="text-balance text-xl font-medium tracking-tight text-slate-700 sm:text-2xl md:text-[1.75rem] md:leading-snug">
-              Document workflows that stay fast, private, and simple
+            <h1 className="font-heading text-balance text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl sm:leading-[1.05] md:text-[3.35rem]">
+              PDF<span className="text-blue-600">Toolkit</span>
             </h1>
 
-            <p className="mx-auto mt-4 max-w-lg text-pretty text-base leading-relaxed text-slate-500 sm:text-lg">
-              Convert, edit, sign, and understand PDFs in one calm workspace.
+            <p className="mt-4 max-w-lg text-balance text-xl font-medium tracking-tight text-slate-700 sm:text-2xl sm:leading-snug">
+              Document workflows that stay fast, private, and simple
             </p>
 
-            <motion.div
-              className="mt-8 flex flex-col items-center"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, delay: 0.2, ease }}
-            >
+            <p className="mt-4 max-w-md text-pretty text-base leading-relaxed text-slate-500 sm:text-lg">
+              Convert, edit, sign, and understand PDFs in one calm workspace — built for teams that
+              care about speed and privacy.
+            </p>
+
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
                 className="h-12 cursor-pointer rounded-full bg-blue-600 px-8 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition-transform hover:scale-[1.02] hover:bg-blue-700"
@@ -150,119 +218,288 @@ export const Home: React.FC = () => {
                 {primaryCta}
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-1 gap-y-2 text-sm">
-                <button
-                  type="button"
-                  onClick={() => scrollToId("esign")}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-12 cursor-pointer rounded-full border-slate-200 bg-white/90 px-7 text-sm font-semibold text-slate-700 shadow-sm hover:bg-white"
+                onClick={() => scrollToId("tools")}
+              >
+                Browse tools
+              </Button>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-x-1 gap-y-2 text-sm">
+              <button
+                type="button"
+                onClick={() => scrollToId("esign")}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-blue-700 transition-colors hover:bg-blue-50"
+              >
+                <FileSignature className="h-3.5 w-3.5" />
+                eSign
+              </button>
+              <span className="text-slate-300" aria-hidden>
+                ·
+              </span>
+              <button
+                type="button"
+                onClick={() => scrollToId("byoc")}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-sky-800 transition-colors hover:bg-sky-50"
+              >
+                <Cloud className="h-3.5 w-3.5" />
+                Your cloud
+              </button>
+              <span className="text-slate-300" aria-hidden>
+                ·
+              </span>
+              <button
+                type="button"
+                onClick={() => scrollToId("desktop")}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-blue-800 transition-colors hover:bg-blue-50"
+              >
+                <Monitor className="h-3.5 w-3.5" />
+                Desktop
+              </button>
+            </div>
+
+            <ul className="mt-8 space-y-2.5">
+              {[
+                "Encrypted processing with short-lived file links",
+                "Legally binding eSign with SHA-256 audit trail",
+                "Enterprise option: keep files in your own cloud",
+              ].map((item, i) => (
+                <motion.li
+                  key={item}
+                  className="flex items-center gap-2.5 text-sm font-medium text-slate-600"
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.28 + i * 0.06, duration: 0.35, ease }}
                 >
-                  <FileSignature className="h-3.5 w-3.5" />
-                  eSign
-                </button>
-                <span className="text-slate-300" aria-hidden>
-                  ·
-                </span>
-                <button
-                  type="button"
-                  onClick={() => scrollToId("byoc")}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-sky-800 transition-colors hover:bg-sky-50"
-                >
-                  <Cloud className="h-3.5 w-3.5" />
-                  Use your own cloud
-                </button>
-              </div>
-            </motion.div>
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+                    <Check className="h-3 w-3" strokeWidth={2.75} />
+                  </span>
+                  {item}
+                </motion.li>
+              ))}
+            </ul>
           </motion.div>
 
-          {/* Product visual */}
+          {/* Immersive app UI — the unique visual */}
           <motion.div
-            className="relative mx-auto mt-12 w-full max-w-5xl sm:mt-16"
-            initial={{ opacity: 0, y: 40 }}
+            className="relative mx-auto w-full max-w-xl lg:max-w-none"
+            style={{ y: heroStageY }}
+            initial={{ opacity: 0, y: 36 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.85, delay: 0.16, ease }}
+            transition={{ duration: 0.85, delay: 0.12, ease }}
           >
-            <div className="absolute -inset-x-10 -bottom-10 top-10 rounded-[2.5rem] bg-gradient-to-b from-blue-600/15 via-sky-200/30 to-transparent blur-3xl sm:-inset-x-20" />
-            <div className="relative overflow-hidden rounded-2xl border border-white/80 bg-white/90 shadow-[0_32px_100px_-28px_rgba(15,23,42,0.35)] ring-1 ring-slate-200/60 backdrop-blur-sm sm:rounded-3xl">
-              <div className="flex items-center gap-2 border-b border-slate-100/90 bg-gradient-to-r from-slate-50 to-white px-4 py-3.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
-                <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
-                <span className="ml-3 text-xs font-medium text-slate-400">
-                  Workspace · PDFToolkit
-                </span>
-                <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                  Secure
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-[220px_1fr]">
-                <aside className="hidden border-r border-slate-100 bg-slate-50/70 p-4 md:block">
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Tools
-                  </p>
-                  <ul className="space-y-1">
-                    {[
-                      { label: "Merge PDF", icon: Zap },
-                      { label: "Compress", icon: FileText },
-                      { label: "eSign", icon: FileSignature, active: true },
-                      { label: "Summarize", icon: Sparkles },
-                      { label: "Protect", icon: Lock },
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <li
-                          key={item.label}
-                          className={cn(
-                            "flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium transition-colors",
-                            item.active
-                              ? "bg-blue-600 text-white shadow-md shadow-blue-600/25"
-                              : "text-slate-500"
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5 shrink-0 opacity-90" />
-                          {item.label}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </aside>
-                <div className="space-y-4 bg-gradient-to-br from-white to-slate-50/80 p-5 sm:p-7">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/30">
-                        <FileSignature className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          Vendor_Agreement.pdf
-                        </p>
-                        <p className="text-xs text-slate-500">Ready to send · 12 pages</p>
-                      </div>
-                    </div>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700 ring-1 ring-blue-100">
-                      <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-x-4 -bottom-6 top-8 rounded-[2rem] bg-gradient-to-b from-blue-600/18 via-sky-200/30 to-transparent blur-3xl sm:-inset-x-6"
+            />
+
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-[#0B1220] shadow-[0_40px_100px_-30px_rgba(15,23,42,0.55)] ring-1 ring-white/10 sm:rounded-3xl">
+              {/* App chrome */}
+              <div className="flex items-center gap-3 border-b border-white/10 bg-slate-950/80 px-3 py-2.5 sm:px-4">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
+                </div>
+                <div className="hidden min-w-0 flex-1 items-center justify-center sm:flex">
+                  <div className="flex w-full max-w-sm items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 ring-1 ring-white/10">
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <span className="truncate text-[11px] font-medium text-slate-300">
+                      workspace · PDFToolkit
+                    </span>
+                    <span className="ml-auto inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300 ring-1 ring-emerald-400/20">
+                      <span className="h-1 w-1 animate-pulse rounded-full bg-emerald-400" />
                       Live
                     </span>
                   </div>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                    <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-blue-600 to-sky-500"
-                      initial={{ width: "0%" }}
-                      animate={{ width: "72%" }}
-                      transition={{ duration: 1.2, delay: 0.6, ease }}
-                    />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-100 bg-white/90 p-4 shadow-sm">
-                      <p className="text-[11px] font-medium text-slate-400">Recipients</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">2 of 3 signed</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-100 bg-white/90 p-4 shadow-sm">
-                      <p className="text-[11px] font-medium text-slate-400">Audit trail</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">SHA-256 verified</p>
-                    </div>
-                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(primaryPath)}
+                  className="ml-auto cursor-pointer rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-md shadow-blue-600/30 hover:bg-blue-500 sm:ml-0"
+                >
+                  Open
+                </button>
+              </div>
+
+              <div className="grid grid-cols-[52px_1fr] sm:grid-cols-[64px_1fr_220px]">
+                {/* Icon rail */}
+                <aside className="flex flex-col items-center gap-1.5 border-r border-white/10 bg-slate-950/60 py-3">
+                  {HERO_RAIL.map((tool) => {
+                    const Icon = tool.icon;
+                    const on = tool.id === activeTool;
+                    return (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        title={tool.label}
+                        onClick={() => setActiveTool(tool.id)}
+                        className={cn(
+                          "relative flex h-10 w-10 cursor-pointer flex-col items-center justify-center rounded-xl transition-colors",
+                          on
+                            ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {on && (
+                          <motion.span
+                            layoutId="hero-rail-dot"
+                            className="absolute -right-0.5 top-1 h-1.5 w-1.5 rounded-full bg-sky-300"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </aside>
+
+                {/* Canvas */}
+                <div className="relative min-h-[320px] bg-gradient-to-br from-slate-900 via-[#0F172A] to-slate-950 p-4 sm:min-h-[380px] sm:p-5">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/20 text-blue-300 ring-1 ring-blue-400/30">
+                        <ActiveIcon className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <AnimatePresence mode="wait">
+                          <motion.p
+                            key={activePanel.title}
+                            className="text-sm font-semibold text-white"
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={{ duration: 0.25 }}
+                          >
+                            {activePanel.title}
+                          </motion.p>
+                        </AnimatePresence>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{activePanel.meta}</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-slate-300 ring-1 ring-white/10">
+                      {HERO_RAIL.find((t) => t.id === activeTool)?.label}
+                    </span>
+                  </div>
+
+                  {/* Document surface */}
+                  <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white shadow-2xl shadow-black/40">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                      <p className="text-[11px] font-semibold text-slate-500">Preview</p>
+                      <p className="text-[10px] font-medium text-slate-400">Page 1 of 12</p>
+                    </div>
+                    <div className="grid gap-3 bg-slate-50/80 p-4 sm:grid-cols-[1fr_0.9fr]">
+                      <div className="space-y-2 rounded-xl bg-white p-3 ring-1 ring-slate-200/80">
+                        <div className="h-2 w-2/3 rounded-full bg-slate-200" />
+                        <div className="space-y-1.5">
+                          {[100, 92, 88, 95, 70, 85, 78].map((w, i) => (
+                            <div
+                              key={i}
+                              className="h-1.5 rounded-full bg-slate-100"
+                              style={{ width: `${w}%` }}
+                            />
+                          ))}
+                        </div>
+                        {activeTool === "esign" && (
+                          <motion.div
+                            className="mt-3 rounded-lg border border-dashed border-blue-300 bg-blue-50/60 px-3 py-2"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                          >
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-blue-700">
+                              Sign here
+                            </p>
+                            <p className="font-heading mt-1 text-lg italic font-semibold text-slate-800">
+                              A. Rivera
+                            </p>
+                          </motion.div>
+                        )}
+                        {activeTool === "ai" && (
+                          <motion.div
+                            className="mt-3 rounded-lg bg-fuchsia-50 px-3 py-2 ring-1 ring-fuchsia-100"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                          >
+                            <p className="flex items-center gap-1 text-[10px] font-semibold text-fuchsia-700">
+                              <Sparkles className="h-3 w-3" />
+                              Summary
+                            </p>
+                            <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                              Policy renews Q3. Two clauses need legal review before send.
+                            </p>
+                          </motion.div>
+                        )}
+                      </div>
+                      <div className="hidden space-y-2 rounded-xl bg-white p-3 ring-1 ring-slate-200/80 sm:block">
+                        <div className="h-2 w-1/2 rounded-full bg-slate-200" />
+                        <div className="space-y-1.5">
+                          {[90, 80, 96, 72, 88, 64].map((w, i) => (
+                            <div
+                              key={i}
+                              className="h-1.5 rounded-full bg-slate-100"
+                              style={{ width: `${w}%` }}
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          {[1, 2, 3].map((n) => (
+                            <div
+                              key={n}
+                              className="aspect-[3/4] flex-1 rounded-md bg-gradient-to-b from-slate-50 to-slate-100 ring-1 ring-slate-200/70"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    <motion.p
+                      key={activePanel.tone}
+                      className="mt-3 text-[11px] font-medium text-slate-400"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      {activePanel.tone}
+                    </motion.p>
+                  </AnimatePresence>
+                </div>
+
+                {/* Inspector */}
+                <aside className="hidden border-l border-white/10 bg-slate-950/40 p-4 sm:block">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Inspector
+                  </p>
+                  <div className="mt-3 space-y-2.5">
+                    <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+                      <p className="text-[10px] text-slate-400">Status</p>
+                      <p className="mt-1 text-xs font-semibold text-white">Ready</p>
+                    </div>
+                    <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+                      <p className="text-[10px] text-slate-400">Integrity</p>
+                      <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                        <Hash className="h-3 w-3" />
+                        SHA-256
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+                      <p className="text-[10px] text-slate-400">Storage</p>
+                      <p className="mt-1 text-xs font-semibold text-sky-300">
+                        Platform · or BYOC
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="mt-4 h-9 w-full cursor-pointer rounded-xl bg-blue-600 text-xs font-semibold text-white hover:bg-blue-500"
+                    onClick={() => navigate(primaryPath)}
+                  >
+                    Run tool
+                  </Button>
+                </aside>
               </div>
             </div>
           </motion.div>
@@ -270,7 +507,10 @@ export const Home: React.FC = () => {
       </section>
 
       {/* ── Tools ──────────────────────────────────────────────────────────── */}
-      <section className="relative w-full border-t border-slate-200/70 bg-white py-20 sm:py-28">
+      <section
+        id="tools"
+        className="relative w-full scroll-mt-20 border-t border-slate-200/70 bg-white py-20 sm:py-28"
+      >
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-slate-50/80 to-transparent"
@@ -460,18 +700,18 @@ export const Home: React.FC = () => {
                 <Button
                   size="lg"
                   className="h-12 cursor-pointer rounded-full bg-blue-600 px-7 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700"
-                  onClick={() => navigate("/sign")}
+                  onClick={() => navigate("/esign")}
                 >
-                  Try eSign
-                  <FileSignature className="ml-1.5 h-4 w-4" />
+                  Explore eSign
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
                 <Button
                   variant="outline"
                   size="lg"
                   className="h-12 cursor-pointer rounded-full border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  onClick={() => navigate("/workspace")}
+                  onClick={() => navigate(user ? "/sign" : "/esign")}
                 >
-                  Open workspace
+                  {user ? "Open eSign" : "See how it works"}
                 </Button>
               </div>
             </motion.div>
@@ -484,77 +724,7 @@ export const Home: React.FC = () => {
               transition={{ duration: 0.55, delay: 0.08, ease }}
             >
               <div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-blue-600/10 to-sky-400/10 blur-2xl" />
-              <div className="relative rounded-3xl border border-slate-200/80 bg-white p-6 shadow-[0_28px_80px_-32px_rgba(15,23,42,0.35)] sm:p-8">
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-md shadow-blue-600/30">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Vendor_Agreement.pdf</p>
-                    <p className="text-xs text-slate-500">3 signers · sequential order</p>
-                  </div>
-                  <span className="ml-auto rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
-                    In progress
-                  </span>
-                </div>
-                <div className="mt-5 space-y-3">
-                  {[
-                    { name: "Alex Chen", role: "Legal", status: "Signed", done: true },
-                    { name: "Jordan Lee", role: "Finance", status: "Signed", done: true },
-                    { name: "Sam Rivera", role: "Vendor", status: "Pending", done: false },
-                  ].map((row, i) => (
-                    <motion.div
-                      key={row.name}
-                      className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3.5 ring-1 ring-slate-100"
-                      initial={{ opacity: 0, y: 8 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: 0.15 + i * 0.08, duration: 0.4, ease }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={cn(
-                            "flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white",
-                            row.done ? "bg-blue-600" : "bg-slate-300"
-                          )}
-                        >
-                          {row.name.charAt(0)}
-                        </span>
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">{row.name}</p>
-                          <p className="text-[11px] text-slate-400">{row.role}</p>
-                        </div>
-                      </div>
-                      <span
-                        className={cn(
-                          "text-xs font-semibold",
-                          row.done ? "text-emerald-600" : "text-slate-400"
-                        )}
-                      >
-                        {row.status}
-                      </span>
-                    </motion.div>
-                  ))}
-                </div>
-                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-5">
-                  <div className="rounded-2xl bg-slate-50 px-3.5 py-3 ring-1 ring-slate-100">
-                    <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      <Hash className="h-3 w-3" />
-                      Document hash
-                    </p>
-                    <p className="mt-1 truncate font-mono text-[11px] font-medium text-slate-700">
-                      a7f3…9c2e
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-emerald-50/80 px-3.5 py-3 ring-1 ring-emerald-100">
-                    <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700/70">
-                      <Mail className="h-3 w-3" />
-                      Notify on complete
-                    </p>
-                    <p className="mt-1 text-[11px] font-medium text-emerald-800">Enabled</p>
-                  </div>
-                </div>
-              </div>
+              <EsignStatusMock className="relative" />
             </motion.div>
           </div>
 
@@ -719,6 +889,86 @@ export const Home: React.FC = () => {
               );
             })}
           </motion.div>
+        </div>
+      </section>
+
+      {/* ── Desktop PDF Toolkit ─────────────────────────────────────────────── */}
+      <section
+        id="desktop"
+        ref={desktopSectionRef}
+        className="relative w-full scroll-mt-20 overflow-hidden border-t border-slate-200/70 bg-white py-20 sm:py-28"
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 60% 50% at 85% 20%, rgba(37,99,235,0.08), transparent 55%), radial-gradient(ellipse 40% 35% at 10% 80%, rgba(14,165,233,0.06), transparent 50%)",
+          }}
+        />
+
+        <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
+            <motion.div
+              initial={{ opacity: 0, y: 22 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={DESKTOP_VIEWPORT}
+              transition={{ duration: 0.55, ease: DESKTOP_EASE }}
+            >
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+                <Monitor className="h-3.5 w-3.5" />
+                Desktop · Windows
+              </p>
+              <h2 className="font-heading mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                PDF Toolkit for your desktop
+              </h2>
+              <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-500 sm:text-lg">
+                All your PDF tools in one Windows app — fast, private, and offline-ready after
+                activation. Files stay on your PC.
+              </p>
+              <ul className="mt-7 space-y-2.5">
+                {[
+                  { icon: ShieldCheck, text: "Private local processing — no random cloud uploads" },
+                  { icon: WifiOff, text: "Works offline once licensed" },
+                  { icon: KeyRound, text: "Activate with a license key; team seats available" },
+                ].map((row) => {
+                  const Icon = row.icon;
+                  return (
+                    <li
+                      key={row.text}
+                      className="flex items-start gap-2.5 text-sm font-medium text-slate-600"
+                    >
+                      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                      {row.text}
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="mt-9 flex flex-wrap gap-3">
+                <Button
+                  size="lg"
+                  className="h-12 cursor-pointer rounded-full bg-blue-600 px-7 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700"
+                  onClick={() => navigate("/desktop")}
+                >
+                  Explore desktop
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="lg"
+                  className="h-12 cursor-pointer rounded-full border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <a href={DOWNLOAD_MAILTO}>Download for Windows</a>
+                </Button>
+              </div>
+            </motion.div>
+
+            <motion.div className="relative" style={{ y: desktopMockY }}>
+              <div className="absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-blue-500/15 to-sky-400/10 blur-2xl" />
+              <DesktopAppMock variant="light" className="relative" />
+            </motion.div>
+          </div>
         </div>
       </section>
 
