@@ -5,6 +5,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { Spinner } from "./components/ui/spinner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ScrollToTop } from "./components/ScrollToTop";
+import { RouteSeo } from "./components/Seo";
 import { ProtectedRoute, VerifiedRoute } from "./components/auth/RouteGuards";
 
 const Home = lazy(() => import("./pages/Home"));
@@ -42,6 +43,7 @@ function App() {
       <TooltipProvider delayDuration={300}>
         <Router>
           <ScrollToTop />
+          <RouteSeo />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/s/:token" element={<SignDocument />} />

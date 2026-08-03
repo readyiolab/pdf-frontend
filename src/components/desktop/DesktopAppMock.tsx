@@ -21,10 +21,10 @@ interface DesktopAppMockProps {
 
 const TOOLS = [
   { label: "Merge", icon: GitMerge, active: true },
-  { label: "Split", icon: Scissors },
-  { label: "Compress", icon: Minimize2 },
-  { label: "Rotate", icon: RotateCw },
-  { label: "Protect", icon: Lock },
+  { label: "Split", icon: Scissors, active: false },
+  { label: "Compress", icon: Minimize2, active: false },
+  { label: "Rotate", icon: RotateCw, active: false },
+  { label: "Protect", icon: Lock, active: false },
 ] as const;
 
 const PAGES = [
