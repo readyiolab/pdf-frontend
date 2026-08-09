@@ -133,7 +133,7 @@ function WizardSteps({
 
 export default function DocumentEditor() {
   const { id = "" } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isSelfSign = searchParams.get("self") === "1";
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -387,10 +387,22 @@ export default function DocumentEditor() {
     activeRecipientId,
     readOnly,
     fieldCountByRecipient,
+    defaultSelf: user ? { name: user.name, email: user.email } : undefined,
     onRecipientsChange: setRecipients,
     onFlowTypeChange: handleFlowTypeChange,
     onActiveChange: setActiveRecipientId,
     onRecipientRemoved: designer.clearRecipient,
+    onSelfSignModeChange: (enabled: boolean) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (enabled) next.set("self", "1");
+          else next.delete("self");
+          return next;
+        },
+        { replace: true }
+      );
+    },
   } as const;
 
   const propertiesPanelProps = {

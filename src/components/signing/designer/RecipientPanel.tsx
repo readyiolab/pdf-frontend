@@ -12,7 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { signingApi } from "@/services/signingApi";
 import { SIGNING_LIMITS, type SignFlowType, type SignRecipient } from "@/lib/signing/types";
-import { AddRecipientModal } from "./AddRecipientModal";
+import { WhoIsSigningModal, type WhoSigningMode } from "./WhoIsSigningModal";
 
 interface RecipientPanelProps {
   documentId: string;
@@ -21,10 +21,12 @@ interface RecipientPanelProps {
   activeRecipientId: string | null;
   readOnly: boolean;
   fieldCountByRecipient: Map<string, number>;
+  defaultSelf?: { name?: string; email?: string };
   onRecipientsChange: (recipients: SignRecipient[]) => void;
   onFlowTypeChange: (flow: SignFlowType) => void;
   onActiveChange: (id: string) => void;
   onRecipientRemoved: (id: string) => void;
+  onSelfSignModeChange?: (enabled: boolean) => void;
   className?: string;
 }
 
@@ -35,19 +37,21 @@ export function RecipientPanel({
   activeRecipientId,
   readOnly,
   fieldCountByRecipient,
+  defaultSelf,
   onRecipientsChange,
   onFlowTypeChange,
   onActiveChange,
   onRecipientRemoved,
+  onSelfSignModeChange,
   className,
 }: RecipientPanelProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [whoOpen, setWhoOpen] = useState(false);
+  const [whoInitialMode, setWhoInitialMode] = useState<WhoSigningMode | null>(null);
 
-  const handleRecipientAdded = (newRecipient: SignRecipient) => {
-    const updated = [...recipients, newRecipient];
-    onRecipientsChange(updated);
-    // Make the newly added recipient active for field assignment
-    onActiveChange(newRecipient.id);
+  const openWhoModal = (mode: WhoSigningMode | null = null) => {
+    if (readOnly) return;
+    setWhoInitialMode(mode);
+    setWhoOpen(true);
   };
 
   const handleRemove = async (recipient: SignRecipient) => {
@@ -56,7 +60,7 @@ export function RecipientPanel({
       fieldCount > 0 &&
       !window.confirm(
         `${recipient.name} has ${fieldCount} field${fieldCount === 1 ? "" : "s"} placed. ` +
-        `Removing them leaves those fields unassigned. Continue?`
+          `Removing them leaves those fields unassigned. Continue?`
       )
     ) {
       return;
@@ -70,6 +74,9 @@ export function RecipientPanel({
       if (activeRecipientId === recipient.id && remaining.length) {
         onActiveChange(remaining[0].id);
       }
+      if (remaining.length === 0) {
+        onSelfSignModeChange?.(false);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't remove recipient.");
     }
@@ -79,7 +86,6 @@ export function RecipientPanel({
 
   return (
     <div className={cn("border-b border-border", className)}>
-      {/* Header section with count */}
       <div className="flex items-center justify-between px-3 py-2.5">
         <div className="flex items-center gap-1.5">
           <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
@@ -92,7 +98,9 @@ export function RecipientPanel({
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() =>
+              openWhoModal(recipients.length === 0 ? null : "only_others")
+            }
             disabled={atLimit}
             aria-label="Add recipient"
           >
@@ -101,7 +109,6 @@ export function RecipientPanel({
         )}
       </div>
 
-      {/* Signing Flow Type selection if multiple recipients */}
       {recipients.length > 1 && !readOnly && (
         <div className="px-3 pb-2">
           <Select value={flowType} onValueChange={(v) => onFlowTypeChange(v as SignFlowType)}>
@@ -129,8 +136,8 @@ export function RecipientPanel({
             <div
               key={r.id}
               className={cn(
-                "group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors border border-transparent",
-                activeRecipientId === r.id ? "bg-primary/10 border-primary/20" : "hover:bg-muted/70"
+                "group flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-colors",
+                activeRecipientId === r.id ? "border-primary/20 bg-primary/10" : "hover:bg-muted/70"
               )}
             >
               <button
@@ -153,7 +160,7 @@ export function RecipientPanel({
                     {r.email}
                   </span>
                   {r.phone && (
-                    <span className="flex items-center gap-1 text-[9px] leading-tight text-muted-foreground/80 mt-0.5">
+                    <span className="mt-0.5 flex items-center gap-1 text-[9px] leading-tight text-muted-foreground/80">
                       <Phone className="size-2.5 shrink-0" />
                       {r.phone}
                     </span>
@@ -180,31 +187,43 @@ export function RecipientPanel({
           );
         })}
 
-        {/* Empty state when recipients count is 0 */}
         {recipients.length === 0 && (
           <button
             type="button"
-            onClick={() => !readOnly && setIsModalOpen(true)}
+            onClick={() => openWhoModal(null)}
             disabled={readOnly}
             className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-6 text-center transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
               <UserPlus className="size-4 text-primary" aria-hidden="true" />
             </span>
-            <span className="text-xs font-semibold text-foreground">Add your first person</span>
+            <span className="text-xs font-semibold text-foreground">Who&apos;s signing?</span>
             <span className="max-w-[14rem] text-[11px] leading-relaxed text-muted-foreground">
-              Enter their name and email — they&apos;ll get a private signing link when you send.
+              Choose only you, only others, or you and others — then add details and continue.
             </span>
           </button>
         )}
       </div>
 
-      {/* Modal dialog for adding recipient */}
-      <AddRecipientModal
-        isOpen={isModalOpen}
+      <WhoIsSigningModal
+        isOpen={whoOpen}
         documentId={documentId}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={handleRecipientAdded}
+        defaultSelf={defaultSelf}
+        initialMode={whoInitialMode}
+        onClose={() => setWhoOpen(false)}
+        onComplete={({ recipients: created, flowType: nextFlow, selfSign }) => {
+          const merged =
+            recipients.length === 0 ? created : [...recipients, ...created];
+          onRecipientsChange(merged);
+          onFlowTypeChange(nextFlow);
+          onSelfSignModeChange?.(selfSign);
+          if (created[0]) onActiveChange(created[0].id);
+          toast.success(
+            created.length === 1
+              ? "Signee added — place fields on the PDF."
+              : `${created.length} signees added — place fields on the PDF.`
+          );
+        }}
       />
     </div>
   );
