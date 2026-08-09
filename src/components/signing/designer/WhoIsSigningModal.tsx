@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -253,6 +253,7 @@ export function WhoIsSigningModal({
   const [hoveredMode, setHoveredMode] = useState<WhoSigningMode | null>(null);
   const [selectedMode, setSelectedMode] = useState<WhoSigningMode | null>(null);
   const [setSigningOrder, setSetSigningOrder] = useState(false);
+  const hoverClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selfDraft, setSelfDraft] = useState<DraftPerson>(() =>
     newDraft({
       email: defaultSelf?.email ?? "",
@@ -263,6 +264,25 @@ export function WhoIsSigningModal({
   );
   const [others, setOthers] = useState<DraftPerson[]>([newDraft()]);
   const [submitting, setSubmitting] = useState(false);
+
+  const clearHoverSoon = () => {
+    if (hoverClearTimer.current) clearTimeout(hoverClearTimer.current);
+    hoverClearTimer.current = setTimeout(() => setHoveredMode(null), 120);
+  };
+
+  const setHoverNow = (mode: WhoSigningMode) => {
+    if (hoverClearTimer.current) {
+      clearTimeout(hoverClearTimer.current);
+      hoverClearTimer.current = null;
+    }
+    setHoveredMode(mode);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverClearTimer.current) clearTimeout(hoverClearTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -282,7 +302,7 @@ export function WhoIsSigningModal({
   }, [isOpen, initialMode, defaultSelf?.email, selfParts.firstName, selfParts.lastName]);
 
   const previewMode = selectedMode ?? hoveredMode;
-  const preview = MODES.find((m) => m.id === previewMode);
+  const preview = MODES.find((m) => m.id === previewMode) ?? null;
 
   const updateOther = (id: string, next: DraftPerson) => {
     setOthers((rows) => rows.map((r) => (r.id === id ? next : r)));
@@ -372,10 +392,12 @@ export function WhoIsSigningModal({
 
   const toneClass =
     preview?.previewTone === "emerald"
-      ? "border-emerald-200 bg-emerald-50/80"
+      ? "border-emerald-200/90 bg-emerald-50/90"
       : preview?.previewTone === "violet"
-        ? "border-violet-200 bg-violet-50/70"
-        : "border-sky-200 bg-sky-50/80";
+        ? "border-violet-200/90 bg-violet-50/80"
+        : preview?.previewTone === "sky"
+          ? "border-sky-200/90 bg-sky-50/90"
+          : "border-transparent bg-transparent";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -391,33 +413,44 @@ export function WhoIsSigningModal({
 
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           {/* Left modes */}
-          <aside className="shrink-0 border-b border-border bg-muted/20 p-4 md:w-[220px] md:border-b-0 md:border-r md:p-5">
+          <aside
+            className="shrink-0 border-b border-border bg-muted/20 p-4 md:w-[220px] md:border-b-0 md:border-r md:p-5"
+            onMouseLeave={clearHoverSoon}
+          >
             <p className="mb-3 text-sm font-bold tracking-tight text-foreground">Who&apos;s signing?</p>
-            <div className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
+            <div className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:gap-2.5 md:overflow-visible md:pb-0">
               {MODES.map((mode) => {
                 const selected = selectedMode === mode.id;
-                const hovered = hoveredMode === mode.id && !selectedMode;
+                const hovered = !selectedMode && hoveredMode === mode.id;
                 return (
                   <button
                     key={mode.id}
                     type="button"
-                    onMouseEnter={() => setHoveredMode(mode.id)}
-                    onMouseLeave={() => setHoveredMode(null)}
-                    onFocus={() => setHoveredMode(mode.id)}
-                    onClick={() => setSelectedMode(mode.id)}
+                    onMouseEnter={() => setHoverNow(mode.id)}
+                    onFocus={() => setHoverNow(mode.id)}
+                    onClick={() => {
+                      if (hoverClearTimer.current) {
+                        clearTimeout(hoverClearTimer.current);
+                        hoverClearTimer.current = null;
+                      }
+                      setSelectedMode(mode.id);
+                      setHoveredMode(mode.id);
+                    }}
                     className={cn(
-                      "relative flex min-w-[7.5rem] flex-col items-center gap-2 rounded-xl border bg-background px-3 py-3 text-center transition-all md:min-w-0 md:flex-row md:items-center md:justify-start md:text-left",
+                      "relative flex min-w-[7.5rem] flex-col items-center gap-2 rounded-xl border bg-background px-3 py-3 text-center transition-[border-color,background-color,box-shadow] duration-200 ease-out md:min-w-0 md:flex-row md:items-center md:justify-start md:text-left",
                       selected
                         ? "border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-500/20"
                         : hovered
-                          ? "border-border bg-muted/40"
-                          : "border-border hover:border-foreground/20 hover:bg-muted/30"
+                          ? "border-blue-300/80 bg-blue-50/50"
+                          : "border-border hover:border-foreground/15"
                     )}
                   >
                     <span
                       className={cn(
-                        "flex size-10 items-center justify-center rounded-lg",
-                        selected ? "bg-blue-100 text-blue-700" : "bg-muted text-foreground"
+                        "flex size-10 items-center justify-center rounded-lg transition-colors duration-200",
+                        selected || hovered
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-muted text-foreground"
                       )}
                     >
                       <ModeIcon mode={mode.id} />
@@ -438,28 +471,44 @@ export function WhoIsSigningModal({
           {/* Right panel */}
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             {!selectedMode ? (
-              <div className="flex flex-1 flex-col items-center justify-center px-6 py-10">
-                {preview ? (
-                  <div
-                    className={cn(
-                      "w-full max-w-md rounded-2xl border px-6 py-7 shadow-sm",
-                      toneClass
-                    )}
-                  >
-                    <div className="mb-4 flex justify-center text-foreground/80">
-                      <FileSignature className="size-10 opacity-70" aria-hidden />
-                    </div>
-                    <h3 className="text-center text-lg font-bold text-foreground">
-                      {preview.previewTitle}
-                    </h3>
-                    {preview.previewSteps.length === 1 ? (
-                      <p className="mt-3 text-center text-sm leading-relaxed text-muted-foreground">
+              <div className="relative flex flex-1 flex-col items-center justify-center px-6 py-10">
+                {/* Idle hint — stays mounted, fades out when preview shows */}
+                <div
+                  className={cn(
+                    "pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-muted-foreground transition-opacity duration-200 ease-out",
+                    preview ? "opacity-0" : "opacity-100"
+                  )}
+                  aria-hidden={!!preview}
+                >
+                  <ArrowLeft className="mb-3 size-10 rotate-180 opacity-30 md:rotate-0" />
+                  <p className="text-sm font-medium">Choose an option</p>
+                </div>
+
+                {/* Preview card — stays mounted, crossfades content */}
+                <div
+                  className={cn(
+                    "relative z-[1] w-full max-w-md rounded-2xl border px-6 py-7 shadow-sm transition-[opacity,border-color,background-color,transform] duration-200 ease-out",
+                    preview
+                      ? cn("translate-y-0 opacity-100", toneClass)
+                      : "pointer-events-none translate-y-1 opacity-0"
+                  )}
+                  aria-hidden={!preview}
+                >
+                  <div className="mb-4 flex justify-center text-foreground/80 transition-opacity duration-200">
+                    <FileSignature className="size-10 opacity-70" aria-hidden />
+                  </div>
+                  <h3 className="text-center text-lg font-bold text-foreground transition-opacity duration-150">
+                    {preview?.previewTitle ?? "\u00a0"}
+                  </h3>
+                  <div className="mt-3 min-h-[7.5rem]">
+                    {preview && preview.previewSteps.length === 1 ? (
+                      <p className="text-center text-sm leading-relaxed text-muted-foreground">
                         {preview.previewSteps[0]}
                       </p>
-                    ) : (
-                      <ol className="mt-4 space-y-2.5 text-sm leading-relaxed text-muted-foreground">
+                    ) : preview ? (
+                      <ol className="space-y-2.5 text-sm leading-relaxed text-muted-foreground">
                         {preview.previewSteps.map((step, i) => (
-                          <li key={step} className="flex gap-2.5">
+                          <li key={`${preview.id}-${i}`} className="flex gap-2.5">
                             <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-background text-[11px] font-bold text-foreground shadow-sm ring-1 ring-border">
                               {i + 1}
                             </span>
@@ -467,17 +516,17 @@ export function WhoIsSigningModal({
                           </li>
                         ))}
                       </ol>
+                    ) : null}
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-5 text-center text-xs text-muted-foreground transition-opacity duration-200",
+                      preview ? "opacity-100" : "opacity-0"
                     )}
-                    <p className="mt-5 text-center text-xs text-muted-foreground">
-                      Click the option to continue
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center text-muted-foreground">
-                    <ArrowLeft className="mb-3 size-10 rotate-180 opacity-30 md:rotate-0" aria-hidden />
-                    <p className="text-sm font-medium">Choose an option</p>
-                  </div>
-                )}
+                  >
+                    Click the option to continue
+                  </p>
+                </div>
               </div>
             ) : (
               <>
