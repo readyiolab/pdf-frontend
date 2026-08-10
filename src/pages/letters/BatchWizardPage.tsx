@@ -113,6 +113,8 @@ export default function BatchWizardPage() {
   const [confirmCount, setConfirmCount] = useState<number | "">("");
   const [subject, setSubject] = useState("Your employee letter");
   const [busy, setBusy] = useState(false);
+  /** True only after Generate PDFs is queued — drives progress polling. */
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     setSendMode(canSend ? "CREATE_DRAFTS" : "GENERATE_ONLY");
@@ -143,6 +145,13 @@ export default function BatchWizardPage() {
           setProgress(p);
         } else if (st === "GENERATING") {
           setStep("generate");
+          setIsGenerating(true);
+          try {
+            const p = await lettersApi.progress(orgId(), routeBatchId);
+            setProgress(p);
+          } catch {
+            /* ignore */
+          }
         } else if (st === "VALIDATED" || st === "MAPPED") {
           setStep("validate");
           try {
@@ -304,6 +313,7 @@ export default function BatchWizardPage() {
         approved: true,
         passwordMode,
       });
+      setIsGenerating(true);
       setProgress({
         status: "GENERATING",
         generated: 0,
@@ -320,9 +330,9 @@ export default function BatchWizardPage() {
     }
   };
 
-  // Poll with backoff; pause when tab is hidden
+  // Poll only while generation is actually running
   useEffect(() => {
-    if (step !== "generate" || !batchId) return;
+    if (step !== "generate" || !batchId || !isGenerating) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let delay = 1000;
@@ -338,6 +348,15 @@ export default function BatchWizardPage() {
       try {
         const p = await lettersApi.progress(orgId(), batchId);
         if (cancelled) return;
+
+        // Generate never started / was reset — stop polling
+        if (p.status === "VALIDATED" || p.status === "MAPPED" || p.status === "DRAFT") {
+          setIsGenerating(false);
+          setProgress(null);
+          toast.error("PDF creation did not start. Click Generate PDFs again.");
+          return;
+        }
+
         setProgress(p);
         const key = `${p.generated}-${p.pending}-${p.failed}-${p.status}`;
         if (key === lastKey) stableTicks += 1;
@@ -345,13 +364,14 @@ export default function BatchWizardPage() {
           stableTicks = 0;
           lastKey = key;
         }
-        if (p.status === "GENERATED" || p.pending === 0) {
+        if (p.status === "GENERATED" || (p.status === "GENERATING" && p.pending === 0)) {
           try {
             const sum = await lettersApi.aiSummary(orgId(), batchId);
-            setProgress((prev: any) => ({ ...prev, aiSummary: sum.summary }));
+            setProgress((prev: any) => ({ ...prev, ...p, aiSummary: sum.summary }));
           } catch {
-            /* optional */
+            setProgress(p);
           }
+          setIsGenerating(false);
           if (p.generated === 0 && p.failed > 0) {
             toast.error("PDFs could not be created. See the message on screen.");
           }
@@ -361,10 +381,17 @@ export default function BatchWizardPage() {
           return;
         }
         // ~2 minutes with no progress change → surface stuck state
-        if (stableTicks >= 24 && p.pending > 0 && p.generated === 0) {
+        if (
+          stableTicks >= 24 &&
+          p.status === "GENERATING" &&
+          p.pending > 0 &&
+          p.generated === 0
+        ) {
           setProgress((prev: any) => ({
             ...prev,
+            ...p,
             lastError:
+              p.lastError ||
               prev?.lastError ||
               "PDF creation is taking too long. The server may be stuck launching Chrome — ask your admin to check pm2 logs.",
           }));
@@ -390,7 +417,7 @@ export default function BatchWizardPage() {
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [step, batchId]);
+  }, [step, batchId, isGenerating]);
 
   const doSend = async () => {
     setBusy(true);
@@ -785,6 +812,9 @@ export default function BatchWizardPage() {
                     try {
                       const prev = await lettersApi.preview(orgId(), batchId);
                       setPreview(prev);
+                      setProgress(null);
+                      setIsGenerating(false);
+                      setApproved(false);
                       setStep("generate");
                     } catch (e: any) {
                       toast.error(e.message || "Could not load preview");
@@ -803,7 +833,7 @@ export default function BatchWizardPage() {
           {(step === "generate" || (step === "send" && !progress)) &&
             preview &&
             step === "generate" &&
-            !progress && (
+            !isGenerating && (
             <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">Check a few letters before generating</h2>
@@ -865,7 +895,7 @@ export default function BatchWizardPage() {
             </div>
           )}
 
-          {step === "generate" && progress && (
+          {step === "generate" && isGenerating && progress && (
             <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-slate-900">Creating PDFs</h2>
               <Progress value={pct} />
@@ -887,6 +917,7 @@ export default function BatchWizardPage() {
                     disabled={busy}
                     onClick={() => {
                       setProgress(null);
+                      setIsGenerating(false);
                       setApproved(false);
                     }}
                   >
@@ -924,6 +955,7 @@ export default function BatchWizardPage() {
                     className="mt-3 rounded-xl border-rose-200"
                     onClick={() => {
                       setProgress(null);
+                      setIsGenerating(false);
                       setApproved(false);
                       setStep("generate");
                     }}
