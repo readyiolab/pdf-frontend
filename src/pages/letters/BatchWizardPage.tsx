@@ -764,28 +764,44 @@ export default function BatchWizardPage() {
 
           {(step === "generate" || (step === "send" && !progress)) && preview && step === "generate" && (
             <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-              <h2 className="text-sm font-semibold text-slate-900">Sample preview</h2>
-              <div className="grid gap-2 text-xs sm:grid-cols-3">
-                {(["first", "middle", "last"] as const).map((k) => (
-                  <div key={k} className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
-                    <div className="mb-1 font-semibold capitalize text-slate-700">{k}</div>
-                    <pre className="whitespace-pre-wrap text-[10px] text-slate-500">
-                      {JSON.stringify(preview.samples[k].employeeData, null, 2)}
-                    </pre>
-                  </div>
-                ))}
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Check a few letters before generating</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Showing the first, middle, and last employee from your file
+                  {preview.eligibleCount != null ? ` · ${preview.eligibleCount} ready` : ""}.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(
+                  [
+                    { key: "first" as const, label: "First" },
+                    { key: "middle" as const, label: "Middle" },
+                    { key: "last" as const, label: "Last" },
+                  ] as const
+                ).map(({ key, label }) => {
+                  const sample = preview.samples?.[key];
+                  const data = (sample?.employeeData || {}) as Record<string, string>;
+                  return (
+                    <SampleEmployeeCard
+                      key={key}
+                      label={label}
+                      data={data}
+                      fileName={sample?.suggestedFileName}
+                    />
+                  );
+                })}
               </div>
               <div>
-                <Label>PDF password mode</Label>
+                <Label>PDF password</Label>
                 <select
                   className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                   value={passwordMode}
                   onChange={(e) => setPasswordMode(e.target.value)}
                 >
-                  <option value="NONE">None</option>
-                  <option value="FROM_COLUMN">From Excel PDF_Password</option>
-                  <option value="EMPLOYEE_ID">Employee_ID</option>
-                  <option value="LAST4_ID">Last 4 of Employee_ID</option>
+                  <option value="NONE">No password</option>
+                  <option value="FROM_COLUMN">Use password from Excel</option>
+                  <option value="EMPLOYEE_ID">Use Employee ID as password</option>
+                  <option value="LAST4_ID">Use last 4 digits of Employee ID</option>
                 </select>
               </div>
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
@@ -795,7 +811,7 @@ export default function BatchWizardPage() {
                   onChange={(e) => setApproved(e.target.checked)}
                   className="size-4 rounded border-slate-300"
                 />
-                I reviewed a sample and approve generation
+                These look correct — generate the PDFs
               </label>
               <Button
                 className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
@@ -923,6 +939,83 @@ export default function BatchWizardPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function formatMoney(value: string | undefined): string | null {
+  if (value == null || String(value).trim() === "") return null;
+  const n = Number(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return String(value);
+  return n.toLocaleString("en-IN");
+}
+
+function SampleEmployeeCard({
+  label,
+  data,
+  fileName,
+}: {
+  label: string;
+  data: Record<string, string>;
+  fileName?: string;
+}) {
+  const name = data.Employee_Name || "Employee";
+  const id = data.Employee_ID || "—";
+  const role = [data.Designation, data.Department].filter(Boolean).join(" · ");
+  const oldCtc = formatMoney(data.Old_CTC);
+  const newCtc = formatMoney(data.New_CTC);
+  const hike = data.Increment_Percent ? `${data.Increment_Percent}%` : null;
+  const effective = data.Effective_Date || null;
+  const email = data.Employee_Email || null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1.5 text-sm font-semibold text-slate-900">{name}</p>
+      <p className="text-xs text-slate-500">ID {id}</p>
+      {role ? <p className="mt-1 text-xs text-slate-600">{role}</p> : null}
+      <dl className="mt-3 space-y-1.5 text-xs">
+        {(oldCtc || newCtc) && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">Salary</dt>
+            <dd className="text-right font-medium text-slate-800">
+              {oldCtc && newCtc ? (
+                <>
+                  {oldCtc} → {newCtc}
+                  {hike ? ` (${hike})` : ""}
+                </>
+              ) : (
+                newCtc || oldCtc
+              )}
+            </dd>
+          </div>
+        )}
+        {effective && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">Effective</dt>
+            <dd className="font-medium text-slate-800">{effective}</dd>
+          </div>
+        )}
+        {email && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">Email</dt>
+            <dd className="max-w-[60%] truncate text-right font-medium text-slate-800" title={email}>
+              {email}
+            </dd>
+          </div>
+        )}
+        {data.Manager_Name && (
+          <div className="flex justify-between gap-2">
+            <dt className="text-slate-500">Manager</dt>
+            <dd className="font-medium text-slate-800">{data.Manager_Name}</dd>
+          </div>
+        )}
+      </dl>
+      {fileName ? (
+        <p className="mt-3 truncate border-t border-slate-200/80 pt-2 text-[10px] text-slate-400" title={fileName}>
+          PDF: {fileName}
+        </p>
+      ) : null}
     </div>
   );
 }
