@@ -37,6 +37,7 @@ const BrandProfilesPage = lazy(() => import("./pages/letters/BrandProfilesPage")
 const TemplatesPage = lazy(() => import("./pages/letters/TemplatesPage"));
 const BatchWizardPage = lazy(() => import("./pages/letters/BatchWizardPage"));
 const BatchHistoryPage = lazy(() => import("./pages/letters/BatchHistoryPage"));
+const MailCallbackPage = lazy(() => import("./pages/letters/MailCallbackPage"));
 const TeamSettingsPage = lazy(() => import("./pages/letters/TeamSettingsPage"));
 const AcceptInvitePage = lazy(() => import("./pages/letters/AcceptInvitePage"));
 const LetterStudioShell = lazy(() =>
@@ -133,6 +134,16 @@ function App() {
                 } />
 
                 <Route path="letters" element={<LettersLanding />} />
+                <Route
+                  path="letters/mail/callback"
+                  element={
+                    <ProtectedRoute>
+                      <VerifiedRoute>
+                        <MailCallbackPage />
+                      </VerifiedRoute>
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   element={
                     <ProtectedRoute>

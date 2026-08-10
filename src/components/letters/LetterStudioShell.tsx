@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import type { CSSProperties } from "react";
 import {
   FileText,
   History,
@@ -12,6 +13,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { LetterOnboardingWizard } from "./LetterOnboardingWizard";
+
+const STUDIO_THEME = {
+  ["--studio-accent"]: "#3730a3",
+  ["--studio-paper"]: "#F4F6F8",
+  ["--studio-canvas"]: "#E8ECF0",
+} as CSSProperties;
 
 const NAV = [
   { to: "/letters/studio", label: "Home", icon: LayoutDashboard, end: true },
@@ -34,21 +41,29 @@ export function LetterStudioShell() {
     location.pathname.startsWith("/letters/batches");
 
   return (
-    <div className="flex h-dvh min-h-0 w-full overflow-hidden bg-white text-slate-900">
+    <div
+      className="flex h-dvh min-h-0 w-full overflow-hidden bg-white text-slate-900"
+      style={STUDIO_THEME}
+    >
       {/* Desktop sidebar — collapsed by default, expands on hover */}
       <aside
         className={cn(
-          "group/sidebar hidden shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-[#F8FAFC]",
+          "group/sidebar hidden shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-[var(--studio-paper,#F4F6F8)]",
           "w-[64px] transition-[width] duration-200 ease-out hover:w-[220px] focus-within:w-[220px] md:flex"
         )}
       >
-        <div className="flex h-12 items-center gap-2.5 border-b border-slate-200/80 px-3">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
+        <div className="flex h-14 items-center gap-2.5 border-b border-slate-200/80 px-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
             <FileText className="size-3.5" />
           </span>
-          <p className="truncate font-heading text-sm font-bold tracking-tight opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
-            Letter Studio
-          </p>
+          <div className="min-w-0 opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+            <p className="truncate font-heading text-sm font-bold tracking-tight text-slate-900">
+              Letter Studio
+            </p>
+            <p className="truncate text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+              Branded HR letters
+            </p>
+          </div>
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 p-2">
           {NAV.map((item) => {
@@ -98,13 +113,21 @@ export function LetterStudioShell() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 md:px-4">
           <div className="flex min-w-0 items-center gap-2 md:hidden">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-indigo-600 text-white">
+            <span className="flex size-8 items-center justify-center rounded-xl bg-slate-900 text-white">
               <FileText className="size-3.5" />
             </span>
-            <p className="truncate font-heading text-sm font-bold">Letter Studio</p>
+            <div className="min-w-0">
+              <p className="truncate font-heading text-sm font-bold">Letter Studio</p>
+              <p className="truncate text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                Branded HR letters
+              </p>
+            </div>
           </div>
-          <p className="hidden text-sm text-slate-500 md:block">
-            Create branded employee letters from Excel
+          <p className="hidden font-heading text-sm font-semibold tracking-tight text-slate-800 md:block">
+            Letter Studio
+            <span className="ml-2 font-sans text-xs font-normal text-slate-500">
+              Templates · brands · Excel → PDF
+            </span>
           </p>
           <div className="ml-auto">
             <Button

@@ -34,10 +34,15 @@ export function LetterEditor({
   content,
   onChange,
   className,
+  paper = false,
+  fontFamily,
 }: {
   content: any;
   onChange: (json: any) => void;
   className?: string;
+  /** A4 letter page styling (no outer card border — parent provides paper). */
+  paper?: boolean;
+  fontFamily?: string;
 }) {
   const editor = useEditor({
     extensions: [
@@ -49,8 +54,13 @@ export function LetterEditor({
     onUpdate: ({ editor: ed }) => onChange(ed.getJSON()),
     editorProps: {
       attributes: {
-        class:
-          "prose prose-sm max-w-none min-h-[320px] focus:outline-none px-4 py-3",
+        class: cn(
+          "prose max-w-none focus:outline-none",
+          paper
+            ? "prose-p:my-3 prose-headings:mb-4 prose-headings:mt-0 min-h-[420px] px-1 py-1 text-[15px] leading-[1.65] text-slate-900"
+            : "prose-sm min-h-[320px] px-4 py-3"
+        ),
+        ...(fontFamily ? { style: `font-family: ${fontFamily}` } : {}),
       },
     },
   });
@@ -68,6 +78,7 @@ export function LetterEditor({
         .focus()
         .insertContent([
           { type: "paragraph", content: [{ type: "text", text: "Warm regards," }] },
+          { type: "paragraph" },
           { type: "paragraph", content: [{ type: "text", text: "{{Manager_Name}}" }] },
         ])
         .run();
@@ -118,8 +129,20 @@ export function LetterEditor({
   };
 
   return (
-    <div className={cn("overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm", className)}>
-      <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 bg-slate-50/80 px-2 py-1.5">
+    <div
+      className={cn(
+        paper
+          ? "overflow-hidden bg-transparent"
+          : "overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm",
+        className
+      )}
+    >
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-1 border-b px-2 py-1.5",
+          paper ? "border-slate-200/80 bg-slate-50/60" : "border-slate-100 bg-slate-50/80"
+        )}
+      >
         <ToolBtn active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
           <Bold className="size-3.5" />
         </ToolBtn>
@@ -129,13 +152,19 @@ export function LetterEditor({
         <ToolBtn active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}>
           <UnderlineIcon className="size-3.5" />
         </ToolBtn>
-        <ToolBtn active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+        <ToolBtn
+          active={editor.isActive("heading", { level: 2 })}
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        >
           <Heading2 className="size-3.5" />
         </ToolBtn>
         <ToolBtn active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>
           <List className="size-3.5" />
         </ToolBtn>
-        <ToolBtn active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+        <ToolBtn
+          active={editor.isActive("orderedList")}
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        >
           <ListOrdered className="size-3.5" />
         </ToolBtn>
         <ToolBtn onClick={() => editor.chain().focus().setTextAlign("left").run()}>

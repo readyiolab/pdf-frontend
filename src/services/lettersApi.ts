@@ -1,4 +1,4 @@
-import { apiFetch } from "./api";
+import { apiFetch, API_BASE_URL } from "./api";
 
 const ORG_HEADER = "X-Organization-Id";
 
@@ -48,7 +48,15 @@ export const lettersApi = {
     return apiFetch("/letters/templates/seed", {
       method: "POST",
       headers: orgHeaders(organizationId),
-    }) as Promise<{ seeded: number; templates: any[] }>;
+    }) as Promise<{ seeded: number; refreshed?: number; templates: any[] }>;
+  },
+
+  refreshStarterTemplates(organizationId: string, overwrite = false) {
+    return apiFetch("/letters/templates/seed", {
+      method: "POST",
+      headers: orgHeaders(organizationId),
+      body: JSON.stringify({ overwrite }),
+    }) as Promise<{ seeded: number; refreshed: number; templates: any[] }>;
   },
 
   getTemplate(organizationId: string, id: string) {
@@ -183,12 +191,56 @@ export const lettersApi = {
     }) as Promise<{ report: any[] }>;
   },
 
+  async downloadPdfsZip(organizationId: string, batchId: string) {
+    const token = localStorage.getItem("saas_jwt_token");
+    const res = await fetch(
+      `${API_BASE_URL}/letters/batches/${batchId}/pdfs/zip`,
+      {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "X-Organization-Id": organizationId,
+        },
+      }
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.message || "Could not download PDFs");
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `letters-${batchId.slice(0, 8)}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  retryFailedGenerate(organizationId: string, batchId: string) {
+    return apiFetch(`/letters/batches/${batchId}/generate/retry-failed`, {
+      method: "POST",
+      headers: orgHeaders(organizationId),
+    });
+  },
+
   mailAccounts() {
     return apiFetch("/letters/mail/accounts") as Promise<{ accounts: any[] }>;
   },
 
   mailAuthorize(provider: "OUTLOOK" | "GMAIL") {
     return apiFetch(`/letters/mail/authorize?provider=${provider}`) as Promise<{ url: string }>;
+  },
+
+  mailExchange(code: string, state: string) {
+    return apiFetch("/letters/mail/exchange", {
+      method: "POST",
+      body: JSON.stringify({ code, state }),
+    }) as Promise<{ account: { id: string; provider: string; emailAddress: string } }>;
+  },
+
+  disconnectMail(accountId: string) {
+    return apiFetch(`/letters/mail/accounts/${accountId}`, {
+      method: "DELETE",
+    });
   },
 
   aiDraft(organizationId: string, body: { instruction: string; letterType?: string }) {
@@ -215,7 +267,13 @@ export const lettersApi = {
       method: "POST",
       headers: orgHeaders(organizationId),
       body: JSON.stringify(body),
-    });
+    }) as Promise<{
+      suggestion?: string;
+      suggestionPreview?: string;
+      contentJson?: any;
+      mode: string;
+      model?: string;
+    }>;
   },
 
   aiSuggestMapping(organizationId: string, headers: string[]) {

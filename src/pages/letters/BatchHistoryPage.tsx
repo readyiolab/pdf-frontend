@@ -4,7 +4,7 @@ import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, Download, Search } from "lucide-react";
 import {
   StudioPageHeader,
   StudioPageBody,
@@ -19,6 +19,7 @@ export default function BatchHistoryPage() {
   const [question, setQuestion] = useState("Show me employees whose letter failed to send");
   const [results, setResults] = useState<any[] | null>(null);
   const [asking, setAsking] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -44,7 +45,7 @@ export default function BatchHistoryPage() {
     <div className="flex min-h-full flex-col">
       <StudioPageHeader
         title="History"
-        description="Reopen past batches, download reports, or search in plain language."
+        description="Reopen past batches, download letter PDFs from cloud storage, or search in plain language."
       />
       <StudioPageBody>
         <div className="flex gap-2 rounded-xl border border-slate-200 p-2">
@@ -83,12 +84,11 @@ export default function BatchHistoryPage() {
 
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
           {batches.map((b) => (
-            <Link
+            <div
               key={b.id}
-              to={`/letters/batches/${b.id}`}
               className="flex items-center justify-between gap-3 px-4 py-3.5 text-sm transition hover:bg-slate-50"
             >
-              <div className="min-w-0">
+              <Link to={`/letters/batches/${b.id}`} className="min-w-0 flex-1">
                 <div className="truncate font-semibold text-slate-900">
                   {b.templateName || "Batch"}
                 </div>
@@ -99,8 +99,32 @@ export default function BatchHistoryPage() {
                 {b.aiSummary && (
                   <div className="mt-1 text-xs text-slate-500">{b.aiSummary}</div>
                 )}
-              </div>
+              </Link>
               <div className="flex shrink-0 items-center gap-1">
+                {Number(b.generatedCount) > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg text-xs"
+                    disabled={downloadingId === b.id}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      setDownloadingId(b.id);
+                      try {
+                        await lettersApi.downloadPdfsZip(orgId(), b.id);
+                        toast.success("Downloading letter PDFs");
+                      } catch (err: any) {
+                        toast.error(err.message || "Download failed");
+                      } finally {
+                        setDownloadingId(null);
+                      }
+                    }}
+                  >
+                    <Download className="mr-1 size-3.5" />
+                    {downloadingId === b.id ? "…" : "Download PDFs"}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -115,15 +139,17 @@ export default function BatchHistoryPage() {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
                     a.href = url;
-                    a.download = `batch-${b.id}-report.json`;
+                    a.download = `batch-${b.id}-status.json`;
                     a.click();
                   }}
                 >
-                  Report
+                  Status (JSON)
                 </Button>
-                <ArrowRight className="size-4 text-slate-400" />
+                <Link to={`/letters/batches/${b.id}`}>
+                  <ArrowRight className="size-4 text-slate-400" />
+                </Link>
               </div>
-            </Link>
+            </div>
           ))}
           {batches.length === 0 && (
             <div className="px-4 py-10 text-center text-sm text-slate-500">No batches yet.</div>

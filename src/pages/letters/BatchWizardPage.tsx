@@ -115,10 +115,27 @@ export default function BatchWizardPage() {
   const [busy, setBusy] = useState(false);
   /** True only after Generate PDFs is queued — drives progress polling. */
   const [isGenerating, setIsGenerating] = useState(false);
+  const [downloadingZip, setDownloadingZip] = useState(false);
 
   useEffect(() => {
     setSendMode(canSend ? "CREATE_DRAFTS" : "GENERATE_ONLY");
   }, [canSend]);
+
+  useEffect(() => {
+    const just = localStorage.getItem("letter_mail_just_connected");
+    if (just) {
+      localStorage.removeItem("letter_mail_just_connected");
+      lettersApi
+        .mailAccounts()
+        .then((accounts) => {
+          setMailAccounts(accounts.accounts);
+          const match = accounts.accounts.find((a) => a.emailAddress === just);
+          if (match) setMailAccountId(match.id);
+          else if (accounts.accounts[0]) setMailAccountId(accounts.accounts[0].id);
+        })
+        .catch(() => undefined);
+    }
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -393,7 +410,7 @@ export default function BatchWizardPage() {
             lastError:
               p.lastError ||
               prev?.lastError ||
-              "PDF creation is taking too long. The server may be stuck launching Chrome — ask your admin to check pm2 logs.",
+              "PDF creation is taking longer than expected. Please wait a bit more, or try again.",
           }));
         }
       } catch {
@@ -565,35 +582,85 @@ export default function BatchWizardPage() {
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
         <div className="space-y-4">
           {step === "setup" && (
-            <div className="space-y-4 rounded-xl border border-slate-200 p-4">
+            <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
               <div>
-                <Label>Template</Label>
-                <select
-                  className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                  value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
-                >
+                <Label className="text-sm font-semibold text-slate-900">Template</Label>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  The letter body employees will receive — this is the main choice.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTemplateId(t.id)}
+                      className={cn(
+                        "rounded-xl border px-3 py-3 text-left transition",
+                        templateId === t.id
+                          ? "border-indigo-300 bg-indigo-50/80 shadow-sm ring-1 ring-indigo-200"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      )}
+                    >
+                      <p className="text-sm font-semibold text-slate-900">{t.name}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        {String(t.type || "").replace(/_/g, " ")} · v{t.version}
+                      </p>
+                    </button>
                   ))}
-                </select>
+                  {templates.length === 0 && (
+                    <p className="text-sm text-slate-500 sm:col-span-2">
+                      No templates yet — create one in Templates first.
+                    </p>
+                  )}
+                </div>
               </div>
               <div>
-                <Label>Brand profile (optional)</Label>
-                <select
-                  className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                  value={brandProfileId}
-                  onChange={(e) => setBrandProfileId(e.target.value)}
-                >
-                  <option value="">None</option>
+                <Label className="text-sm font-semibold text-slate-900">
+                  Brand profile (optional)
+                </Label>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Logo, letterhead, and signatory overlay. You can keep several brands and pick one.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setBrandProfileId("")}
+                    className={cn(
+                      "rounded-xl border px-3 py-3 text-left transition",
+                      !brandProfileId
+                        ? "border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200"
+                        : "border-slate-200 hover:border-slate-300"
+                    )}
+                  >
+                    <p className="text-sm font-semibold text-slate-900">No brand</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Plain letter only</p>
+                  </button>
                   {brands.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setBrandProfileId(b.id)}
+                      className={cn(
+                        "rounded-xl border px-3 py-3 text-left transition",
+                        brandProfileId === b.id
+                          ? "border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200"
+                          : "border-slate-200 hover:border-slate-300"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold uppercase text-slate-500">
+                          {String(b.name || "BR").slice(0, 2)}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{b.name}</p>
+                          <p className="truncate text-[11px] text-slate-500">
+                            {b.signatoryName || "No signatory"}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
               <Button
                 className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
@@ -903,8 +970,13 @@ export default function BatchWizardPage() {
                 {progress.pending > 0 && !(progress.failed > 0 && progress.generated === 0) ? (
                   <Spinner className="size-4 text-indigo-600" />
                 ) : null}
-                {progress.generated} done · {progress.pending} waiting
-                {progress.failed > 0 ? ` · ${progress.failed} failed` : ""}
+                {progress.pending > 0
+                  ? `Creating letter ${Math.min(
+                      (progress.generated || 0) + 1,
+                      (progress.generated || 0) + (progress.pending || 0) + (progress.failed || 0)
+                    )} of ${(progress.generated || 0) + (progress.pending || 0) + (progress.failed || 0)}…`
+                  : `${progress.generated} done`}
+                {progress.failed > 0 ? ` · ${progress.failed} need retry` : ""}
               </p>
               {progress.lastError && progress.generated === 0 && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-900">
@@ -929,8 +1001,7 @@ export default function BatchWizardPage() {
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-900">
                   <p className="font-semibold">PDFs could not be created</p>
                   <p className="mt-1 text-xs leading-relaxed text-rose-800">
-                    The server failed while making the letter PDFs. Try again, or ask your admin to
-                    check the letter worker logs.
+                    Something went wrong while creating the letter PDFs. Please try again.
                   </p>
                 </div>
               )}
@@ -947,7 +1018,7 @@ export default function BatchWizardPage() {
                   <p className="font-semibold">No PDFs were created</p>
                   <p className="mt-1 text-xs leading-relaxed text-rose-800">
                     {progress.lastError ||
-                      "Something went wrong on the server while creating PDFs."}
+                      "Something went wrong while creating PDFs. Please try again."}
                   </p>
                   <Button
                     type="button"
@@ -964,6 +1035,48 @@ export default function BatchWizardPage() {
                   </Button>
                 </div>
               )}
+              {progress?.generated > 0 && progress?.failed > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+                  <p className="font-semibold">
+                    {progress.generated} ready · {progress.failed} could not be created
+                  </p>
+                  {Array.isArray(progress.failedEmployees) && progress.failedEmployees.length > 0 && (
+                    <ul className="mt-2 list-inside list-disc text-xs text-amber-900">
+                      {progress.failedEmployees.slice(0, 8).map((f: any) => (
+                        <li key={f.id}>{f.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 rounded-xl border-amber-300"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        const res = await lettersApi.retryFailedGenerate(orgId(), batchId);
+                        setIsGenerating(true);
+                        setStep("generate");
+                        setProgress({
+                          status: "GENERATING",
+                          generated: progress.generated,
+                          pending: res.queued || progress.failed,
+                          failed: 0,
+                        });
+                        toast.success(`Retrying ${res.queued} failed letter(s)…`);
+                      } catch (e: any) {
+                        toast.error(e.message);
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    {busy ? <Spinner className="mr-2 size-4" /> : null}
+                    Retry failed only
+                  </Button>
+                </div>
+              )}
               {progress?.aiSummary && (
                 <div className="rounded-xl bg-indigo-50 px-3 py-2.5 text-sm text-indigo-900">
                   {progress.aiSummary}
@@ -971,6 +1084,36 @@ export default function BatchWizardPage() {
               )}
               {(progress?.generated > 0 || !(progress?.failed > 0)) && (
                 <>
+                  {progress?.generated > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                      <p className="text-sm font-medium text-slate-900">
+                        {progress.generated} letter PDF{progress.generated === 1 ? "" : "s"} ready
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Letters are stored in your cloud storage. Download anytime from History.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-3 rounded-xl border-slate-200"
+                        disabled={downloadingZip}
+                        onClick={async () => {
+                          setDownloadingZip(true);
+                          try {
+                            await lettersApi.downloadPdfsZip(orgId(), batchId);
+                            toast.success("Downloading letter PDFs");
+                          } catch (e: any) {
+                            toast.error(e.message || "Download failed");
+                          } finally {
+                            setDownloadingZip(false);
+                          }
+                        }}
+                      >
+                        {downloadingZip ? <Spinner className="mr-2 size-4" /> : null}
+                        Download all PDFs
+                      </Button>
+                    </div>
+                  )}
                   <div>
                     <Label>Mode</Label>
                     <select
@@ -985,7 +1128,8 @@ export default function BatchWizardPage() {
                     </select>
                     {!canSend && (
                       <p className="mt-1 text-xs text-slate-500">
-                        Free plan creates PDFs only — upgrade to email letters.
+                        Free plan creates PDFs only — upgrade to email letters from your Outlook or
+                        Gmail.
                       </p>
                     )}
                   </div>
@@ -997,9 +1141,20 @@ export default function BatchWizardPage() {
                           variant="outline"
                           size="sm"
                           className="rounded-xl border-slate-200"
+                          disabled={busy}
                           onClick={async () => {
-                            const { url } = await lettersApi.mailAuthorize("OUTLOOK");
-                            window.location.href = url;
+                            setBusy(true);
+                            try {
+                              localStorage.setItem(
+                                "letter_mail_return_to",
+                                `/letters/batches/${batchId}`
+                              );
+                              const { url } = await lettersApi.mailAuthorize("OUTLOOK");
+                              window.location.href = url;
+                            } catch (e: any) {
+                              toast.error(e.message);
+                              setBusy(false);
+                            }
                           }}
                         >
                           Connect Outlook
@@ -1009,28 +1164,64 @@ export default function BatchWizardPage() {
                           variant="outline"
                           size="sm"
                           className="rounded-xl border-slate-200"
+                          disabled={busy}
                           onClick={async () => {
-                            const { url } = await lettersApi.mailAuthorize("GMAIL");
-                            window.location.href = url;
+                            setBusy(true);
+                            try {
+                              localStorage.setItem(
+                                "letter_mail_return_to",
+                                `/letters/batches/${batchId}`
+                              );
+                              const { url } = await lettersApi.mailAuthorize("GMAIL");
+                              window.location.href = url;
+                            } catch (e: any) {
+                              toast.error(e.message);
+                              setBusy(false);
+                            }
                           }}
                         >
                           Connect Gmail
                         </Button>
                       </div>
                       <div>
-                        <Label>Mail account</Label>
+                        <Label>Send as</Label>
                         <select
                           className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                           value={mailAccountId}
                           onChange={(e) => setMailAccountId(e.target.value)}
                         >
-                          <option value="">Select…</option>
+                          <option value="">Select connected mailbox…</option>
                           {mailAccounts.map((a) => (
                             <option key={a.id} value={a.id}>
                               {a.provider} · {a.emailAddress}
                             </option>
                           ))}
                         </select>
+                        {mailAccountId && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            Sending as{" "}
+                            {mailAccounts.find((a) => a.id === mailAccountId)?.emailAddress ||
+                              "your mailbox"}
+                            .{" "}
+                            <button
+                              type="button"
+                              className="underline"
+                              onClick={async () => {
+                                try {
+                                  await lettersApi.disconnectMail(mailAccountId);
+                                  const accounts = await lettersApi.mailAccounts();
+                                  setMailAccounts(accounts.accounts);
+                                  setMailAccountId("");
+                                  toast.success("Mailbox disconnected");
+                                } catch (e: any) {
+                                  toast.error(e.message);
+                                }
+                              }}
+                            >
+                              Disconnect
+                            </button>
+                          </p>
+                        )}
                       </div>
                       <div>
                         <Label>Subject</Label>
