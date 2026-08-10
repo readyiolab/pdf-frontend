@@ -779,14 +779,22 @@ export default function BatchWizardPage() {
                 </Button>
                 <Button
                   className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                  disabled={busy || (summary && summary.ready + summary.warning === 0)}
                   onClick={async () => {
-                    const prev = await lettersApi.preview(orgId(), batchId);
-                    setPreview(prev);
-                    setStep("generate");
+                    setBusy(true);
+                    try {
+                      const prev = await lettersApi.preview(orgId(), batchId);
+                      setPreview(prev);
+                      setStep("generate");
+                    } catch (e: any) {
+                      toast.error(e.message || "Could not load preview");
+                    } finally {
+                      setBusy(false);
+                    }
                   }}
-                  disabled={summary && summary.ready + summary.warning === 0}
                 >
-                  Continue to generate
+                  {busy ? <Spinner className="mr-2 size-4" /> : null}
+                  {busy ? "Loading…" : "Continue to generate"}
                 </Button>
               </div>
             </div>
