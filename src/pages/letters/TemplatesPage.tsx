@@ -5,10 +5,7 @@ import { LetterEditor } from "@/components/letters/LetterEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  StudioPageHeader,
-  StudioSkeleton,
-} from "@/components/letters/StudioPageHeader";
+import { StudioSkeleton } from "@/components/letters/StudioPageHeader";
 import { toast } from "sonner";
 import { Loader2, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
