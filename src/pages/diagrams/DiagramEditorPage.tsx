@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -233,13 +233,19 @@ export default function DiagramEditorPage() {
     return () => window.removeEventListener("beforeunload", onBefore);
   }, [dirty]);
 
-  const blocker = useBlocker(dirty);
-  useEffect(() => {
-    if (blocker.state !== "blocked") return;
-    const ok = window.confirm("You have unsaved changes. Leave without saving?");
-    if (ok) blocker.proceed();
-    else blocker.reset();
-  }, [blocker]);
+  /** BrowserRouter does not support useBlocker — confirm before in-app leaves. */
+  const confirmLeave = useCallback(() => {
+    if (!dirty) return true;
+    return window.confirm("You have unsaved changes. Leave without saving?");
+  }, [dirty]);
+
+  const leaveTo = useCallback(
+    (path: string) => {
+      if (!confirmLeave()) return;
+      navigate(path);
+    },
+    [confirmLeave, navigate]
+  );
 
   const switchPage = (id: string) => {
     if (id === activePageId) return;
@@ -354,8 +360,8 @@ export default function DiagramEditorPage() {
       id: "file",
       label: "File",
       items: [
-        { type: "item" as const, label: "New", onClick: () => navigate("/diagrams/new") },
-        { type: "item" as const, label: "Open…", onClick: () => navigate("/diagrams/studio") },
+        { type: "item" as const, label: "New", onClick: () => leaveTo("/diagrams/new") },
+        { type: "item" as const, label: "Open…", onClick: () => leaveTo("/diagrams/studio") },
         { type: "sep" as const },
         { type: "item" as const, label: "Save", shortcut: "Ctrl+S", onClick: () => void save() },
         {
@@ -492,7 +498,14 @@ export default function DiagramEditorPage() {
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-white text-[#0f172a]">
       {/* Title bar */}
       <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#cfd8e3] bg-[#f8fafc] px-3">
-        <Link to="/diagrams" className="flex size-7 items-center justify-center rounded-md bg-[#f97316] text-xs font-bold text-white" title="Diagram Studio">
+        <Link
+          to="/diagrams"
+          className="flex size-7 items-center justify-center rounded-md bg-[#f97316] text-xs font-bold text-white"
+          title="Diagram Studio"
+          onClick={(e) => {
+            if (!confirmLeave()) e.preventDefault();
+          }}
+        >
           D
         </Link>
         <input

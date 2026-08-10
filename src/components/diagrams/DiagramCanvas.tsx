@@ -13,6 +13,7 @@ import {
   Clipboard,
   HierarchicalLayout,
   getDefaultPlugins,
+  StencilShapeConfig,
   type Cell,
   type CellStyle,
 } from "@maxgraph/core";
@@ -26,6 +27,10 @@ import {
 } from "@/lib/diagram/model";
 import type { ShapeDef } from "@/lib/diagram/shapes";
 import { cn } from "@/lib/utils";
+
+// maxGraph can eval style/stencil strings when allowEval is true. Keep it off
+// for production (default is already false; set explicitly for defense).
+StencilShapeConfig.allowEval = false;
 
 export type SelectionInfo = {
   cells: Cell[];
@@ -119,6 +124,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     graph.setGridSize(settings?.gridSize ?? 10);
     graph.setTooltips(true);
     graph.getView().setTranslate(40, 40);
+    graph.getView().setAllowEval(false);
 
     const undo = new UndoManager();
     const listener = (_sender: unknown, evt: { getProperty: (k: string) => unknown }) => {

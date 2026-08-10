@@ -53,9 +53,37 @@ function pdfjsAssets(): Plugin {
   }
 }
 
+/**
+ * maxGraph ships a tiny `doEval` helper that uses direct `eval(...)`.
+ * Rolldown/Vite warn on every production build, and direct eval can break
+ * scope-hoisting. Rewrite to indirect eval `(0, eval)(...)` so the helper
+ * still works if allowEval is ever enabled, without the build warning.
+ * Our editor keeps allowEval disabled, so this path is not used at runtime.
+ */
+function patchMaxGraphEval(): Plugin {
+  return {
+    name: "patch-maxgraph-eval",
+    enforce: "pre",
+    transform(code, id) {
+      const normalized = id.replace(/\\/g, "/")
+      if (!normalized.includes("/@maxgraph/core/") || !normalized.endsWith("/internal/utils.js")) {
+        return null
+      }
+      if (!code.includes("return eval(expression)")) return null
+      return {
+        code: code.replace(
+          "return eval(expression);",
+          "return (0, eval)(expression);"
+        ),
+        map: null,
+      }
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), pdfjsAssets()],
+  plugins: [react(), tailwindcss(), pdfjsAssets(), patchMaxGraphEval()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -67,6 +95,23 @@ export default defineConfig({
     // It is lazy-loaded (only on a PDF/signing view) and cached, so this is a
     // known, accepted cost — raise the warning threshold rather than see a
     // scary (but harmless) size warning on every production build.
+    // Diagram editor also pulls @maxgraph/core (~500KB) as a lazy chunk.
     chunkSizeWarningLimit: 2000,
+    // Ignore leftover EVAL noise from deps we already patched / don't invoke.
+    rolldownOptions: {
+      onwarn(warning, warn) {
+        const msg = String(warning.message || "")
+        const id = String((warning as { id?: string }).id || "")
+        if (
+          (warning as { code?: string }).code === "EVAL" ||
+          msg.includes("Use of direct `eval`")
+        ) {
+          if (id.includes("@maxgraph/core") || msg.includes("@maxgraph/core")) {
+            return
+          }
+        }
+        warn(warning)
+      },
+    },
   },
 })
