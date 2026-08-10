@@ -303,8 +303,15 @@ export default function BatchWizardPage() {
         approved: true,
         passwordMode,
       });
+      setProgress({
+        status: "GENERATING",
+        generated: 0,
+        pending: prev.eligibleCount || 0,
+        failed: 0,
+        skipped: 0,
+      });
       setStep("generate");
-      toast.success("Generation queued");
+      toast.success("Creating PDFs…");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -335,6 +342,9 @@ export default function BatchWizardPage() {
             setProgress((prev: any) => ({ ...prev, aiSummary: sum.summary }));
           } catch {
             /* optional */
+          }
+          if (p.generated === 0 && p.failed > 0) {
+            toast.error("PDFs could not be created. See the message on screen.");
           }
           setStep("send");
           const accounts = await lettersApi.mailAccounts();
@@ -762,7 +772,10 @@ export default function BatchWizardPage() {
             </div>
           )}
 
-          {(step === "generate" || (step === "send" && !progress)) && preview && step === "generate" && (
+          {(step === "generate" || (step === "send" && !progress)) &&
+            preview &&
+            step === "generate" &&
+            !progress && (
             <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">Check a few letters before generating</h2>
@@ -820,121 +833,152 @@ export default function BatchWizardPage() {
               >
                 Generate PDFs
               </Button>
-              {progress && (
-                <div className="space-y-2">
-                  <Progress value={pct} />
-                  <p className="text-xs text-slate-500">
-                    Generated {progress.generated} · pending {progress.pending} · failed{" "}
-                    {progress.failed}
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
           {step === "generate" && progress && (
-            <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+              <h2 className="text-sm font-semibold text-slate-900">Creating PDFs</h2>
               <Progress value={pct} />
               <p className="text-sm text-slate-600">
-                Generating… {progress.generated} done, {progress.pending} pending
+                {progress.generated} done · {progress.pending} waiting
+                {progress.failed > 0 ? ` · ${progress.failed} failed` : ""}
               </p>
-              <div className="h-2 animate-pulse rounded bg-slate-100" />
+              {progress.failed > 0 && progress.generated === 0 && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-900">
+                  <p className="font-semibold">PDFs could not be created</p>
+                  <p className="mt-1 text-xs leading-relaxed text-rose-800">
+                    {progress.lastError ||
+                      "The server failed while making the letter PDFs. Try again, or ask your admin to check the letter worker logs."}
+                  </p>
+                </div>
+              )}
+              {progress.pending > 0 && (
+                <div className="h-2 animate-pulse rounded bg-slate-100" />
+              )}
             </div>
           )}
 
           {step === "send" && (
             <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+              {progress?.failed > 0 && !(progress?.generated > 0) && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-900">
+                  <p className="font-semibold">No PDFs were created</p>
+                  <p className="mt-1 text-xs leading-relaxed text-rose-800">
+                    {progress.lastError ||
+                      "Something went wrong on the server while creating PDFs."}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 rounded-xl border-rose-200"
+                    onClick={() => {
+                      setProgress(null);
+                      setApproved(false);
+                      setStep("generate");
+                    }}
+                  >
+                    Try generating again
+                  </Button>
+                </div>
+              )}
               {progress?.aiSummary && (
                 <div className="rounded-xl bg-indigo-50 px-3 py-2.5 text-sm text-indigo-900">
                   {progress.aiSummary}
                 </div>
               )}
-              <div>
-                <Label>Mode</Label>
-                <select
-                  className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                  value={sendMode}
-                  onChange={(e) => setSendMode(e.target.value as any)}
-                  disabled={!canSend}
-                >
-                  <option value="GENERATE_ONLY">Generate only (no email)</option>
-                  {canSend && <option value="CREATE_DRAFTS">Create drafts (default)</option>}
-                  {canSend && <option value="SEND_NOW">Send now</option>}
-                </select>
-                {!canSend && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Free plan creates PDFs only — upgrade to email letters.
-                  </p>
-                )}
-              </div>
-              {sendMode !== "GENERATE_ONLY" && canSend && (
+              {(progress?.generated > 0 || !(progress?.failed > 0)) && (
                 <>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl border-slate-200"
-                      onClick={async () => {
-                        const { url } = await lettersApi.mailAuthorize("OUTLOOK");
-                        window.location.href = url;
-                      }}
-                    >
-                      Connect Outlook
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl border-slate-200"
-                      onClick={async () => {
-                        const { url } = await lettersApi.mailAuthorize("GMAIL");
-                        window.location.href = url;
-                      }}
-                    >
-                      Connect Gmail
-                    </Button>
-                  </div>
                   <div>
-                    <Label>Mail account</Label>
+                    <Label>Mode</Label>
                     <select
                       className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                      value={mailAccountId}
-                      onChange={(e) => setMailAccountId(e.target.value)}
+                      value={sendMode}
+                      onChange={(e) => setSendMode(e.target.value as any)}
+                      disabled={!canSend}
                     >
-                      <option value="">Select…</option>
-                      {mailAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.provider} · {a.emailAddress}
-                        </option>
-                      ))}
+                      <option value="GENERATE_ONLY">Generate only (no email)</option>
+                      {canSend && <option value="CREATE_DRAFTS">Create drafts (default)</option>}
+                      {canSend && <option value="SEND_NOW">Send now</option>}
                     </select>
+                    {!canSend && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Free plan creates PDFs only — upgrade to email letters.
+                      </p>
+                    )}
                   </div>
-                  <div>
-                    <Label>Subject</Label>
-                    <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
-                  </div>
+                  {sendMode !== "GENERATE_ONLY" && canSend && (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl border-slate-200"
+                          onClick={async () => {
+                            const { url } = await lettersApi.mailAuthorize("OUTLOOK");
+                            window.location.href = url;
+                          }}
+                        >
+                          Connect Outlook
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl border-slate-200"
+                          onClick={async () => {
+                            const { url } = await lettersApi.mailAuthorize("GMAIL");
+                            window.location.href = url;
+                          }}
+                        >
+                          Connect Gmail
+                        </Button>
+                      </div>
+                      <div>
+                        <Label>Mail account</Label>
+                        <select
+                          className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                          value={mailAccountId}
+                          onChange={(e) => setMailAccountId(e.target.value)}
+                        >
+                          <option value="">Select…</option>
+                          {mailAccounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.provider} · {a.emailAddress}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <Label>Subject</Label>
+                        <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                      </div>
+                    </>
+                  )}
+                  {sendMode === "SEND_NOW" && canSend && (
+                    <div>
+                      <Label>
+                        Confirm recipient count ({progress?.generated || preview?.eligibleCount || "?"})
+                      </Label>
+                      <Input
+                        type="number"
+                        value={confirmCount}
+                        onChange={(e) =>
+                          setConfirmCount(e.target.value ? Number(e.target.value) : "")
+                        }
+                      />
+                    </div>
+                  )}
+                  <Button
+                    className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                    disabled={busy || !(progress?.generated > 0)}
+                    onClick={doSend}
+                  >
+                    {sendMode === "SEND_NOW" && canSend ? "Confirm & send now" : "Continue"}
+                  </Button>
                 </>
               )}
-              {sendMode === "SEND_NOW" && canSend && (
-                <div>
-                  <Label>
-                    Confirm recipient count ({progress?.generated || preview?.eligibleCount || "?"})
-                  </Label>
-                  <Input
-                    type="number"
-                    value={confirmCount}
-                    onChange={(e) => setConfirmCount(e.target.value ? Number(e.target.value) : "")}
-                  />
-                </div>
-              )}
-              <Button
-                className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
-                disabled={busy}
-                onClick={doSend}
-              >
-                {sendMode === "SEND_NOW" && canSend ? "Confirm & send now" : "Continue"}
-              </Button>
             </div>
           )}
         </div>
