@@ -1,0 +1,6 @@
+Employee_ID,Employee_Name,Employee_Email,Designation,Department,Old_CTC,New_CTC,Increment_Percent,Effective_Date,PDF_Password,Manager_Name
+EMP001,Rahul Sharma,rahul.sharma@example.com,Software Engineer,Engineering,800000,896000,12,2026-04-01,Rahul01,Priya Mehta
+EMP002,Anita Verma,anita.verma@example.com,Product Analyst,Product,650000,715000,10,2026-04-01,Anita02,Priya Mehta
+EMP003,Vikram Singh,vikram.singh@example.com,HR Executive,Human Resources,550000,605000,10,2026-04-01,Vikram03,Suresh Nair
+EMP004,Neha Gupta,neha.gupta@example.com,Marketing Associate,Marketing,480000,528000,10,2026-04-01,Neha04,Suresh Nair
+EMP005,Amit Patel,amit.patel@example.com,Senior Developer,Engineering,1200000,1344000,12,2026-04-01,Amit05,Priya Mehta

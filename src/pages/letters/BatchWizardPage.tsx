@@ -353,9 +353,20 @@ export default function BatchWizardPage() {
       )}
 
       {(step === "map" || (batchId && step === "setup")) && batchId && step !== "setup" && (
-        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
+        <div className="space-y-4 rounded-xl border border-slate-200 p-4">
           <div>
-            <Label>Upload Excel / CSV</Label>
+            <Label>Upload Excel or CSV</Label>
+            <p className="mt-1 text-xs text-slate-500">
+              Need a test file?{" "}
+              <a
+                href="/samples/letter-batch-sample.csv"
+                download="letter-batch-sample.csv"
+                className="font-semibold text-indigo-700 underline underline-offset-2"
+              >
+                Download sample Excel (CSV)
+              </a>{" "}
+              with 5 employees — then upload it here.
+            </p>
             <input
               type="file"
               accept=".xlsx,.xls,.csv"
