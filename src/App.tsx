@@ -31,6 +31,15 @@ const EnterpriseByoc = lazy(() => import("./pages/enterprise/EnterpriseByoc"));
 const DesktopToolkit = lazy(() => import("./pages/desktop/DesktopToolkit"));
 const EsignLanding = lazy(() => import("./pages/esign/EsignLanding"));
 
+const LettersLanding = lazy(() => import("./pages/letters/LettersLanding"));
+const LettersHub = lazy(() => import("./pages/letters/LettersHub"));
+const BrandProfilesPage = lazy(() => import("./pages/letters/BrandProfilesPage"));
+const TemplatesPage = lazy(() => import("./pages/letters/TemplatesPage"));
+const BatchWizardPage = lazy(() => import("./pages/letters/BatchWizardPage"));
+const BatchHistoryPage = lazy(() => import("./pages/letters/BatchHistoryPage"));
+const TeamSettingsPage = lazy(() => import("./pages/letters/TeamSettingsPage"));
+const AcceptInvitePage = lazy(() => import("./pages/letters/AcceptInvitePage"));
+
 const PageLoader = () => (
   <div className="flex min-h-[50vh] items-center justify-center animate-fade-in">
     <Spinner className="h-6 w-6 text-primary" />
@@ -114,6 +123,64 @@ function App() {
                   <ProtectedRoute>
                     <VerifiedRoute>
                       <ChatPdf />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+
+                <Route path="letters" element={<LettersLanding />} />
+                <Route path="letters/studio" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <LettersHub />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+                <Route path="letters/brands" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <BrandProfilesPage />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+                <Route path="letters/templates" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <TemplatesPage />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+                <Route path="letters/batches/new" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <BatchWizardPage />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+                <Route path="letters/batches/:batchId" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <BatchWizardPage />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+                <Route path="letters/history" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <BatchHistoryPage />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+                <Route path="letters/team" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <TeamSettingsPage />
+                    </VerifiedRoute>
+                  </ProtectedRoute>
+                } />
+                <Route path="orgs/accept-invite" element={
+                  <ProtectedRoute>
+                    <VerifiedRoute>
+                      <AcceptInvitePage />
                     </VerifiedRoute>
                   </ProtectedRoute>
                 } />

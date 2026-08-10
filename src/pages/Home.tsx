@@ -14,6 +14,7 @@ import {
   Hash,
   KeyRound,
   Lock,
+  Mail,
   Minimize2,
   Monitor,
   Scissors,
@@ -247,6 +248,17 @@ export const Home: React.FC = () => {
               >
                 <Cloud className="h-3.5 w-3.5" />
                 Your cloud
+              </button>
+              <span className="text-slate-300" aria-hidden>
+                ·
+              </span>
+              <button
+                type="button"
+                onClick={() => scrollToId("letters")}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-indigo-800 transition-colors hover:bg-indigo-50"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Letters
               </button>
               <span className="text-slate-300" aria-hidden>
                 ·
@@ -889,6 +901,123 @@ export const Home: React.FC = () => {
               );
             })}
           </motion.div>
+        </div>
+      </section>
+
+      {/* ── Letter Studio deep dive ─────────────────────────────────────────── */}
+      <section
+        id="letters"
+        className="relative w-full scroll-mt-20 overflow-hidden border-t border-slate-200/70 bg-[#F7F9FC] py-20 sm:py-28"
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 55% 45% at 12% 30%, rgba(99,102,241,0.1), transparent 55%), radial-gradient(ellipse 45% 40% at 90% 70%, rgba(37,99,235,0.08), transparent 50%)",
+          }}
+        />
+        <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
+            <motion.div
+              initial={{ opacity: 0, y: 22 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={BYOC_VIEWPORT}
+              transition={{ duration: 0.55, ease: BYOC_EASE }}
+            >
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-500/20">
+                <FileText className="h-3.5 w-3.5" />
+                Letter Studio · HR & Finance
+              </p>
+              <h2 className="font-heading mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                Branded employee letters from Excel — generate, protect, send
+              </h2>
+              <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-500 sm:text-lg">
+                Design once with field tokens, map messy spreadsheets, validate every row, then
+                queue password-protected PDFs. Send drafts from your own Outlook or Gmail —
+                AI suggests, humans approve.
+              </p>
+              <ul className="mt-7 space-y-2.5">
+                {[
+                  "TipTap letter editor with {{Employee_Name}} tokens",
+                  "Excel import, mapping & Ready / Warning / Blocked",
+                  "Bulk PDFs + your mailbox (never a shared sender)",
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-2.5 text-sm font-medium text-slate-600">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white">
+                      <Check className="h-3 w-3" strokeWidth={2.75} />
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-9 flex flex-wrap gap-3">
+                <Button
+                  size="lg"
+                  className="h-12 cursor-pointer rounded-full bg-indigo-600 px-7 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 hover:bg-indigo-700"
+                  onClick={() => navigate("/letters")}
+                >
+                  Explore Letter Studio
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="h-12 cursor-pointer rounded-full border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  onClick={() => navigate(user ? "/letters/studio" : "/login")}
+                >
+                  {user ? "Open studio" : "Start free"}
+                </Button>
+              </div>
+            </motion.div>
+
+            <motion.div
+              className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xl shadow-slate-900/10"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={BYOC_VIEWPORT}
+              transition={{ duration: 0.55, delay: 0.08, ease: BYOC_EASE }}
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-indigo-600" />
+                  <span className="text-sm font-semibold text-slate-900">Increment batch · Q1</span>
+                </div>
+                <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                  AI mapped
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {[
+                  { label: "Ready", n: "168", className: "bg-emerald-50 text-emerald-800" },
+                  { label: "Warning", n: "11", className: "bg-amber-50 text-amber-800" },
+                  { label: "Blocked", n: "3", className: "bg-rose-50 text-rose-800" },
+                ].map((s) => (
+                  <div key={s.label} className={`rounded-xl px-3 py-3 text-center ${s.className}`}>
+                    <div className="text-xl font-bold">{s.n}</div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide opacity-80">
+                      {s.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 space-y-2 text-xs text-slate-600">
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                  <span>CTC_New</span>
+                  <ArrowRight className="h-3 w-3 text-slate-300" />
+                  <span className="font-semibold text-indigo-700">New_CTC</span>
+                </div>
+                <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                  <span>Emp Name</span>
+                  <ArrowRight className="h-3 w-3 text-slate-300" />
+                  <span className="font-semibold text-indigo-700">Employee_Name</span>
+                </div>
+              </div>
+              <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
+                Human approval before generate. Send via your connected Outlook or Gmail only.
+              </p>
+            </motion.div>
+          </div>
         </div>
       </section>
 

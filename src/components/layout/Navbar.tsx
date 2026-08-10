@@ -292,6 +292,9 @@ export const Navbar: React.FC = () => {
               <Link to="/esign" className={linkClass("/esign")}>
                 eSign
               </Link>
+              <Link to="/letters" className={linkClass("/letters")}>
+                Letters
+              </Link>
               <Link to="/ai/summarize" className={linkClass("/ai")}>
                 AI Suite
               </Link>
@@ -445,6 +448,7 @@ export const Navbar: React.FC = () => {
                 {[
                   { to: "/workspace", match: "/workspace", label: "Workspace", icon: ArrowRight, tone: "text-blue-600" },
                   { to: "/esign", match: "/esign", label: "eSign", icon: PenTool, tone: "text-blue-600" },
+                  { to: "/letters", match: "/letters", label: "Letters", icon: FileText, tone: "text-indigo-600" },
                   { to: "/ai/summarize", match: "/ai", label: "AI Suite", icon: Sparkles, tone: "text-fuchsia-500" },
                   { to: "/enterprise", match: "/enterprise", label: "Your cloud", icon: Cloud, tone: "text-sky-500" },
                   { to: "/desktop", match: "/desktop", label: "Desktop", icon: Monitor, tone: "text-blue-600" },

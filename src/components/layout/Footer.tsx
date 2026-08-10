@@ -79,6 +79,7 @@ export const Footer: React.FC = () => {
               <li><Link to="/workspace/jpg-to-pdf" className="hover:text-foreground transition-colors">JPG to PDF</Link></li>
               <li><Link to="/workspace/protect" className="hover:text-foreground transition-colors">Protect PDF</Link></li>
               <li><Link to="/esign" className="hover:text-foreground transition-colors flex items-center gap-1">eSign Documents</Link></li>
+              <li><Link to="/letters" className="hover:text-foreground transition-colors">Letter Studio</Link></li>
             </ul>
           </div>
 
@@ -104,6 +105,7 @@ export const Footer: React.FC = () => {
               <li><Link to="/workspace" className="hover:text-foreground transition-colors">Workspace Dashboard</Link></li>
               <li><Link to="/billing" className="hover:text-foreground transition-colors">Plans & Pricing</Link></li>
               <li><Link to="/enterprise" className="hover:text-foreground transition-colors">Enterprise Solution</Link></li>
+              <li><Link to="/letters" className="hover:text-foreground transition-colors">Employee Letter Studio</Link></li>
               <li><Link to="/desktop" className="hover:text-foreground transition-colors">Desktop app</Link></li>
               <li><Link to="/security" className="hover:text-foreground transition-colors">Security & Trust</Link></li>
               <li><Link to="/developer" className="hover:text-foreground transition-colors flex items-center gap-1">Developer API <span className="px-1.5 py-0.5 text-[9px] rounded-full bg-muted text-foreground font-bold">v2.0</span></Link></li>

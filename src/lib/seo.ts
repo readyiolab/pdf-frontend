@@ -62,6 +62,14 @@ const EXACT: Record<string, Omit<SeoConfig, "path">> = {
     keywords:
       "BYOC, bring your own cloud, enterprise PDF, AWS S3 PDF, Azure Blob PDF",
   },
+  "/letters": {
+    title: `Employee Letter Studio | ${SITE_NAME}`,
+    description:
+      "Create branded employee letters from Excel — validate, generate password-protected PDFs in bulk, and send from your Outlook or Gmail. AI assists, humans approve.",
+    robots: "index, follow",
+    keywords:
+      "employee letter generator, HR letter Excel, bulk PDF letters, increment letter, salary revision letter",
+  },
   "/workspace": {
     title: `PDF Workspace | ${SITE_NAME}`,
     description:
@@ -256,6 +264,7 @@ export const SITEMAP_PATHS = [
   "/desktop",
   "/esign",
   "/enterprise",
+  "/letters",
   "/workspace",
   "/security",
   "/developer",

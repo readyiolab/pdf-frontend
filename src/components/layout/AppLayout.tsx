@@ -11,6 +11,7 @@ export const AppLayout: React.FC = () => {
   const isEnterprise = location.pathname === "/enterprise";
   const isDesktop = location.pathname === "/desktop";
   const isEsignMarketing = location.pathname === "/esign";
+  const isLettersMarketing = location.pathname === "/letters";
   const isEsignEditor = /^\/sign\/[^/]+$/.test(location.pathname);
   const isAiStudio = location.pathname.startsWith("/ai/");
   const isToolStudio = /^\/workspace\/[^/]+$/.test(location.pathname);
@@ -19,6 +20,7 @@ export const AppLayout: React.FC = () => {
     isEnterprise ||
     isDesktop ||
     isEsignMarketing ||
+    isLettersMarketing ||
     isEsignEditor ||
     isAiStudio ||
     isToolStudio;
@@ -27,7 +29,8 @@ export const AppLayout: React.FC = () => {
   // Immersive panes: no decorative blobs, and the shell must fill the viewport
   // height so children using h-full / flex-1 actually stretch edge-to-edge.
   const isImmersive = isEsignEditor || isAiStudio || isToolStudio;
-  const isMarketingBleed = isHome || isEnterprise || isDesktop || isEsignMarketing;
+  const isMarketingBleed =
+    isHome || isEnterprise || isDesktop || isEsignMarketing || isLettersMarketing;
 
   return (
     <div
