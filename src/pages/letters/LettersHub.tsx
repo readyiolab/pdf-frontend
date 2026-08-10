@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,37 @@ import {
   Sparkles,
   ArrowRight,
   PenLine,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+
+const GUIDE_STEPS = [
+  {
+    n: 1,
+    title: "Brand profile",
+    desc: "Add logo, letterhead, and signatory so every PDF looks like your company.",
+    to: "/letters/brands",
+    cta: "Set up brand",
+    icon: Palette,
+  },
+  {
+    n: 2,
+    title: "Letter template",
+    desc: "Write the letter once with field tokens like {{Employee_Name}} and {{New_CTC}}.",
+    to: "/letters/templates",
+    cta: "Open templates",
+    icon: PenLine,
+  },
+  {
+    n: 3,
+    title: "New batch",
+    desc: "Import Excel, map columns, validate rows, then generate password-protected PDFs.",
+    to: "/letters/batches/new",
+    cta: "Start batch",
+    icon: Upload,
+  },
+] as const;
 
 export default function LettersHub() {
   const navigate = useNavigate();
@@ -23,6 +51,8 @@ export default function LettersHub() {
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(true);
   const [batches, setBatches] = useState<any[]>([]);
+  const [brandCount, setBrandCount] = useState(0);
+  const [templateCount, setTemplateCount] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -32,8 +62,15 @@ export default function LettersHub() {
         setOrgName(boot.org.organization.name);
         localStorage.setItem("letter_org_id", id);
         if (boot.warning) toast.message(boot.warning);
-        const { batches: list } = await lettersApi.listBatches(id);
-        setBatches(list.slice(0, 6));
+
+        const [batchRes, brandRes, templateRes] = await Promise.all([
+          lettersApi.listBatches(id),
+          lettersApi.listBrands(id).catch(() => ({ brands: [] as any[] })),
+          lettersApi.listTemplates(id).catch(() => ({ templates: [] as any[] })),
+        ]);
+        setBatches(batchRes.batches.slice(0, 6));
+        setBrandCount(brandRes.brands?.length || 0);
+        setTemplateCount(templateRes.templates?.length || 0);
       } catch (err: any) {
         toast.error(err.message || "Failed to open Letter Studio");
       } finally {
@@ -41,6 +78,19 @@ export default function LettersHub() {
       }
     })();
   }, []);
+
+  const activeStep = useMemo(() => {
+    if (brandCount === 0) return 1;
+    if (templateCount === 0) return 2;
+    if (batches.length === 0) return 3;
+    return 3;
+  }, [brandCount, templateCount, batches.length]);
+
+  const done = {
+    1: brandCount > 0,
+    2: templateCount > 0,
+    3: batches.length > 0,
+  } as const;
 
   if (loading) {
     return (
@@ -52,6 +102,7 @@ export default function LettersHub() {
   }
 
   const isFree = user?.plan === "FREE";
+  const current = GUIDE_STEPS.find((s) => s.n === activeStep)!;
 
   return (
     <div className="space-y-8">
@@ -64,26 +115,16 @@ export default function LettersHub() {
             {orgName || "Your organization"}
           </h1>
           <p className="mt-1 max-w-xl text-sm text-slate-500">
-            Design branded letters, import Excel, validate, generate PDFs, and send from your mailbox.
+            Follow the steps below — we highlight where you are and what to do next.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            className="h-10 rounded-full border-slate-200 bg-white"
-            onClick={() => navigate("/letters/templates")}
-          >
-            <PenLine className="mr-1.5 size-4" />
-            Templates
-          </Button>
-          <Button
-            className="h-10 rounded-full bg-indigo-600 hover:bg-indigo-700"
-            onClick={() => navigate("/letters/batches/new")}
-          >
-            New batch
-            <ArrowRight className="ml-1.5 size-4" />
-          </Button>
-        </div>
+        <Button
+          className="h-10 rounded-full bg-indigo-600 hover:bg-indigo-700"
+          onClick={() => navigate(current.to)}
+        >
+          Continue: Step {activeStep}
+          <ArrowRight className="ml-1.5 size-4" />
+        </Button>
       </div>
 
       {isFree && (
@@ -95,29 +136,95 @@ export default function LettersHub() {
         </div>
       )}
 
+      {/* Guided steps */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+          <h2 className="text-sm font-semibold text-slate-900">How Letter Studio works</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Step {activeStep} of 3 is highlighted — complete it, then move to the next.
+          </p>
+        </div>
+
+        <ol className="grid gap-0 md:grid-cols-3">
+          {GUIDE_STEPS.map((step, idx) => {
+            const Icon = step.icon;
+            const isActive = step.n === activeStep;
+            const isDone = done[step.n];
+            return (
+              <li
+                key={step.n}
+                className={cn(
+                  "relative flex flex-col gap-3 border-slate-100 p-4 sm:p-5",
+                  idx > 0 && "md:border-l",
+                  idx < GUIDE_STEPS.length - 1 && "border-b md:border-b-0",
+                  isActive && "bg-indigo-50/60 ring-1 ring-inset ring-indigo-200"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={cn(
+                      "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+                      isDone && !isActive
+                        ? "bg-emerald-100 text-emerald-700"
+                        : isActive
+                          ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                          : "bg-slate-100 text-slate-500"
+                    )}
+                  >
+                    {isDone && !isActive ? <Check className="size-4" /> : step.n}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <Icon
+                        className={cn(
+                          "size-4",
+                          isActive ? "text-indigo-700" : "text-slate-400"
+                        )}
+                      />
+                      <h3
+                        className={cn(
+                          "text-sm font-semibold",
+                          isActive ? "text-indigo-950" : "text-slate-900"
+                        )}
+                      >
+                        {step.title}
+                      </h3>
+                    </div>
+                    {isActive && (
+                      <span className="mt-1 inline-block rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                        You are here
+                      </span>
+                    )}
+                    {isDone && !isActive && (
+                      <span className="mt-1 inline-block text-[11px] font-medium text-emerald-700">
+                        Done
+                      </span>
+                    )}
+                    <p className="mt-2 text-xs leading-relaxed text-slate-500">{step.desc}</p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant={isActive ? "default" : "outline"}
+                  className={cn(
+                    "mt-auto h-9 w-full rounded-xl",
+                    isActive
+                      ? "bg-indigo-600 hover:bg-indigo-700"
+                      : "border-slate-200"
+                  )}
+                  onClick={() => navigate(step.to)}
+                >
+                  {step.cta}
+                  <ArrowRight className="ml-1.5 size-3.5" />
+                </Button>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[
-          {
-            icon: Palette,
-            title: "Brand profiles",
-            desc: "Logo, letterhead, signatory, fonts",
-            to: "/letters/brands",
-            tone: "bg-violet-50 text-violet-700",
-          },
-          {
-            icon: FileText,
-            title: "Templates",
-            desc: "TipTap editor with field tokens",
-            to: "/letters/templates",
-            tone: "bg-indigo-50 text-indigo-700",
-          },
-          {
-            icon: Upload,
-            title: "New batch",
-            desc: "Import Excel → validate → generate",
-            to: "/letters/batches/new",
-            tone: "bg-sky-50 text-sky-700",
-          },
           {
             icon: History,
             title: "Batch history",
@@ -139,11 +246,32 @@ export default function LettersHub() {
             to: "/letters/templates?ai=1",
             tone: "bg-fuchsia-50 text-fuchsia-700",
           },
+          {
+            icon: FileText,
+            title: "All templates",
+            desc: "Edit or create letter templates",
+            to: "/letters/templates",
+            tone: "bg-indigo-50 text-indigo-700",
+          },
+          {
+            icon: Palette,
+            title: "Brand profiles",
+            desc: "Logo, letterhead, signatory, fonts",
+            to: "/letters/brands",
+            tone: "bg-violet-50 text-violet-700",
+          },
+          {
+            icon: Upload,
+            title: "New batch",
+            desc: "Import Excel → validate → generate",
+            to: "/letters/batches/new",
+            tone: "bg-sky-50 text-sky-700",
+          },
         ].map((card) => {
           const Icon = card.icon;
           return (
             <Link
-              key={card.to}
+              key={card.to + card.title}
               to={card.to}
               className="group rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
             >
@@ -179,7 +307,7 @@ export default function LettersHub() {
         </div>
         {batches.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-slate-500">
-            No batches yet. Start with a template, then import Excel.
+            No batches yet. Finish Step 1 and Step 2, then start a batch.
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
