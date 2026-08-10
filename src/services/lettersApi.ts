@@ -12,6 +12,7 @@ export const lettersApi = {
     return apiFetch("/letters/bootstrap", { method: "POST" }) as Promise<{
       org: { organization: any; role: string; membershipId: string };
       starters: { seeded: number; templates: any[] };
+      warning?: string;
     }>;
   },
 

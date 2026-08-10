@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -261,21 +261,58 @@ export default function BatchWizardPage() {
     return Math.round((progress.generated / total) * 100);
   }, [progress]);
 
+  const STEP_META: { id: Step; label: string }[] = [
+    { id: "setup", label: "Setup" },
+    { id: "map", label: "Map" },
+    { id: "validate", label: "Validate" },
+    { id: "generate", label: "Generate" },
+    { id: "send", label: "Send" },
+  ];
+  const stepIndex = STEP_META.findIndex((s) => s.id === step);
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <Link to="/letters/studio" className="text-xs text-muted-foreground hover:underline">
-          ← Letter Studio
-        </Link>
-        <h1 className="text-xl font-bold">Batch wizard</h1>
-        <p className="text-xs text-muted-foreground">
-          Step: {step}
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Workflow</p>
+        <h1 className="font-heading mt-1 text-2xl font-bold tracking-tight text-slate-900">
+          Batch wizard
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Import Excel, validate rows, generate PDFs, then send or draft.
           {batchId ? ` · ${batchId.slice(0, 8)}…` : ""}
         </p>
       </div>
 
+      <ol className="flex flex-wrap gap-1.5 rounded-2xl border border-slate-200/90 bg-white p-2 shadow-sm">
+        {STEP_META.map((s, i) => {
+          const active = s.id === step;
+          const done = i < stepIndex;
+          return (
+            <li
+              key={s.id}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-xs font-semibold min-w-[4.5rem] ${
+                active
+                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/20"
+                  : done
+                    ? "bg-indigo-50 text-indigo-800"
+                    : "text-slate-400"
+              }`}
+            >
+              <span
+                className={`flex size-5 items-center justify-center rounded-full text-[10px] ${
+                  active ? "bg-white/20" : done ? "bg-indigo-100" : "bg-slate-100"
+                }`}
+              >
+                {i + 1}
+              </span>
+              {s.label}
+            </li>
+          );
+        })}
+      </ol>
+
       {step === "setup" && (
-        <div className="space-y-4 rounded-2xl border p-4">
+        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
           <div>
             <Label>Template</Label>
             <select
@@ -305,44 +342,51 @@ export default function BatchWizardPage() {
               ))}
             </select>
           </div>
-          <Button className="rounded-full" disabled={busy || !templateId} onClick={createBatch}>
+          <Button
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
+            disabled={busy || !templateId}
+            onClick={createBatch}
+          >
             Continue
           </Button>
         </div>
       )}
 
       {(step === "map" || (batchId && step === "setup")) && batchId && step !== "setup" && (
-        <div className="space-y-4 rounded-2xl border p-4">
-          <Label>Upload Excel / CSV</Label>
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
-          />
+        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
+          <div>
+            <Label>Upload Excel / CSV</Label>
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="mt-2 block w-full text-sm text-slate-600 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+              onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+            />
+          </div>
           {headers.length > 0 && (
             <>
-              <div className="overflow-auto rounded-lg border">
+              <div className="overflow-auto rounded-xl border border-slate-200">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-muted/50">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-2 py-2">Excel column</th>
-                      <th className="px-2 py-2">Maps to</th>
+                      <th className="px-3 py-2.5 font-semibold text-slate-600">Excel column</th>
+                      <th className="px-3 py-2.5 font-semibold text-slate-600">Maps to</th>
                     </tr>
                   </thead>
                   <tbody>
                     {headers.map((h) => (
-                      <tr key={h} className="border-t">
-                        <td className="px-2 py-2">
+                      <tr key={h} className="border-t border-slate-100">
+                        <td className="px-3 py-2">
                           {h}
                           {aiSuggested[h] && (
-                            <span className="ml-2 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] text-violet-700">
+                            <span className="ml-2 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
                               AI suggested
                             </span>
                           )}
                         </td>
-                        <td className="px-2 py-2">
+                        <td className="px-3 py-2">
                           <select
-                            className="h-8 w-full rounded border bg-background px-2"
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2"
                             value={mapping[h] || ""}
                             onChange={(e) =>
                               setMapping((m) => ({ ...m, [h]: e.target.value }))
@@ -361,23 +405,21 @@ export default function BatchWizardPage() {
                   </tbody>
                 </table>
               </div>
-              <Button className="rounded-full" disabled={busy} onClick={applyMap}>
+              <Button
+                className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
+                disabled={busy}
+                onClick={applyMap}
+              >
                 Save mapping &amp; validate
               </Button>
             </>
           )}
+          {headers.length === 0 && (
+            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+              Upload an .xlsx or .csv file to detect columns.
+            </p>
+          )}
         </div>
-      )}
-
-      {step === "map" && batchId && headers.length === 0 && (
-        <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Upload an .xlsx or .csv file to detect columns.
-        </div>
-      )}
-
-      {/* After createBatch we set step map but file not uploaded - also show upload on map after create */}
-      {step === "map" && batchId && (
-        <div className="text-xs text-muted-foreground">Upload your spreadsheet above to continue.</div>
       )}
 
       {step === "validate" && (
@@ -389,7 +431,7 @@ export default function BatchWizardPage() {
               <Stat label="Blocked" value={summary.blocked} tone="rose" />
             </div>
           )}
-          <div className="max-h-64 overflow-auto rounded-xl border text-xs">
+          <div className="max-h-64 overflow-auto rounded-2xl border border-slate-200/90 bg-white shadow-sm text-xs">
             {issues.map((iss) => (
               <div key={iss.id} className="border-b px-3 py-2">
                 <div className="font-medium">
@@ -400,7 +442,7 @@ export default function BatchWizardPage() {
                     </span>
                   )}
                 </div>
-                <ul className="mt-1 list-disc pl-4 text-muted-foreground">
+                <ul className="mt-1 list-disc pl-4 text-slate-500">
                   {(iss.errors || []).map((e: any, i: number) => (
                     <li key={i}>
                       [{e.severity}] {e.message}
@@ -413,19 +455,19 @@ export default function BatchWizardPage() {
               </div>
             ))}
             {issues.length === 0 && (
-              <div className="p-4 text-muted-foreground">No issues — all rows ready.</div>
+              <div className="p-4 text-slate-500">No issues — all rows ready.</div>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              className="rounded-full"
+              className="rounded-xl border-slate-200"
               onClick={() => setStep("map")}
             >
               Fix mapping
             </Button>
             <Button
-              className="rounded-full"
+              className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
               onClick={async () => {
                 const prev = await lettersApi.preview(orgId(), batchId);
                 setPreview(prev);
@@ -440,13 +482,13 @@ export default function BatchWizardPage() {
       )}
 
       {(step === "generate" || (step === "send" && !progress)) && preview && step === "generate" && (
-        <div className="space-y-4 rounded-2xl border p-4">
-          <h2 className="font-semibold">Sample preview</h2>
+        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
+          <h2 className="text-sm font-semibold text-slate-900">Sample preview</h2>
           <div className="grid gap-2 text-xs sm:grid-cols-3">
             {(["first", "middle", "last"] as const).map((k) => (
-              <div key={k} className="rounded-lg border p-2">
-                <div className="mb-1 font-medium capitalize">{k}</div>
-                <pre className="whitespace-pre-wrap text-[10px] text-muted-foreground">
+              <div key={k} className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+                <div className="mb-1 font-semibold capitalize text-slate-700">{k}</div>
+                <pre className="whitespace-pre-wrap text-[10px] text-slate-500">
                   {JSON.stringify(preview.samples[k].employeeData, null, 2)}
                 </pre>
               </div>
@@ -455,7 +497,7 @@ export default function BatchWizardPage() {
           <div>
             <Label>PDF password mode</Label>
             <select
-              className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+              className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
               value={passwordMode}
               onChange={(e) => setPasswordMode(e.target.value)}
             >
@@ -465,21 +507,26 @@ export default function BatchWizardPage() {
               <option value="LAST4_ID">Last 4 of Employee_ID</option>
             </select>
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
             <input
               type="checkbox"
               checked={approved}
               onChange={(e) => setApproved(e.target.checked)}
+              className="size-4 rounded border-slate-300"
             />
             I reviewed a sample and approve generation
           </label>
-          <Button className="rounded-full" disabled={busy || !approved} onClick={startGenerate}>
+          <Button
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
+            disabled={busy || !approved}
+            onClick={startGenerate}
+          >
             Generate PDFs
           </Button>
           {progress && (
             <div className="space-y-2">
               <Progress value={pct} />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-slate-500">
                 Generated {progress.generated} · pending {progress.pending} · failed{" "}
                 {progress.failed}
               </p>
@@ -489,23 +536,25 @@ export default function BatchWizardPage() {
       )}
 
       {step === "generate" && progress && (
-        <div className="space-y-2 rounded-2xl border p-4">
+        <div className="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
           <Progress value={pct} />
-          <p className="text-sm">
+          <p className="text-sm text-slate-600">
             Generating… {progress.generated} done, {progress.pending} pending
           </p>
         </div>
       )}
 
       {step === "send" && (
-        <div className="space-y-4 rounded-2xl border p-4">
+        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
           {progress?.aiSummary && (
-            <div className="rounded-lg bg-muted/50 p-3 text-sm">{progress.aiSummary}</div>
+            <div className="rounded-xl bg-indigo-50 px-3 py-2.5 text-sm text-indigo-900">
+              {progress.aiSummary}
+            </div>
           )}
           <div>
             <Label>Mode</Label>
             <select
-              className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+              className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
               value={sendMode}
               onChange={(e) => setSendMode(e.target.value as any)}
             >
@@ -521,6 +570,7 @@ export default function BatchWizardPage() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="rounded-xl border-slate-200"
                   onClick={async () => {
                     const { url } = await lettersApi.mailAuthorize("OUTLOOK");
                     window.location.href = url;
@@ -532,6 +582,7 @@ export default function BatchWizardPage() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="rounded-xl border-slate-200"
                   onClick={async () => {
                     const { url } = await lettersApi.mailAuthorize("GMAIL");
                     window.location.href = url;
@@ -543,7 +594,7 @@ export default function BatchWizardPage() {
               <div>
                 <Label>Mail account</Label>
                 <select
-                  className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                   value={mailAccountId}
                   onChange={(e) => setMailAccountId(e.target.value)}
                 >
@@ -573,7 +624,11 @@ export default function BatchWizardPage() {
               />
             </div>
           )}
-          <Button className="rounded-full" disabled={busy} onClick={doSend}>
+          <Button
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
+            disabled={busy}
+            onClick={doSend}
+          >
             {sendMode === "SEND_NOW" ? "Confirm & send now" : "Continue"}
           </Button>
         </div>
@@ -597,9 +652,9 @@ function Stat({
     rose: "border-rose-500/30 bg-rose-500/5 text-rose-700",
   };
   return (
-    <div className={`rounded-xl border p-3 ${colors[tone]}`}>
+    <div className={`rounded-2xl border p-3 shadow-sm ${colors[tone]}`}>
       <div className="text-2xl font-bold">{value}</div>
-      <div className="text-xs">{label}</div>
+      <div className="text-xs font-medium opacity-80">{label}</div>
     </div>
   );
 }

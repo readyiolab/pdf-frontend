@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,16 +57,21 @@ export default function TeamSettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 px-4 py-8">
+    <div className="mx-auto max-w-lg space-y-6">
       <div>
-        <Link to="/letters/studio" className="text-xs text-muted-foreground hover:underline">
-          ← Letter Studio
-        </Link>
-        <h1 className="text-xl font-bold">Team &amp; retention</h1>
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+          Organization
+        </p>
+        <h1 className="font-heading mt-1 text-2xl font-bold tracking-tight text-slate-900">
+          Team &amp; retention
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Invite colleagues and control how long generated PDFs are kept.
+        </p>
       </div>
 
-      <div className="space-y-3 rounded-2xl border p-4">
-        <h2 className="font-semibold">Invite member</h2>
+      <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
+        <h2 className="text-sm font-semibold text-slate-900">Invite member</h2>
         <div>
           <Label>Email</Label>
           <Input value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -74,7 +79,7 @@ export default function TeamSettingsPage() {
         <div>
           <Label>Role</Label>
           <select
-            className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+            className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
             value={role}
             onChange={(e) => setRole(e.target.value)}
           >
@@ -83,23 +88,23 @@ export default function TeamSettingsPage() {
             <option value="VIEWER">Viewer</option>
           </select>
         </div>
-        <Button className="rounded-full" onClick={invite}>
+        <Button className="rounded-xl bg-indigo-600 hover:bg-indigo-700" onClick={invite}>
           Send invite
         </Button>
         {inviteToken && (
-          <p className="break-all text-xs text-muted-foreground">
+          <p className="break-all rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
             Dev accept link: /orgs/accept-invite?token={inviteToken}
           </p>
         )}
       </div>
 
-      <div className="space-y-3 rounded-2xl border p-4">
-        <h2 className="font-semibold">PDF retention</h2>
-        <p className="text-xs text-muted-foreground">
+      <div className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
+        <h2 className="text-sm font-semibold text-slate-900">PDF retention</h2>
+        <p className="text-xs text-slate-500">
           Generated PDFs older than this window are purged. Metadata is kept.
         </p>
         <select
-          className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+          className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
           value={retention}
           onChange={(e) => setRetention(Number(e.target.value) as 30 | 60 | 90)}
         >
@@ -107,7 +112,7 @@ export default function TeamSettingsPage() {
           <option value={60}>60 days</option>
           <option value={90}>90 days</option>
         </select>
-        <Button className="rounded-full" variant="outline" onClick={saveRetention}>
+        <Button className="rounded-xl border-slate-200" variant="outline" onClick={saveRetention}>
           Save retention
         </Button>
       </div>

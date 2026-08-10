@@ -118,8 +118,8 @@ export function LetterEditor({
   };
 
   return (
-    <div className={cn("rounded-xl border bg-background", className)}>
-      <div className="flex flex-wrap items-center gap-1 border-b bg-muted/40 px-2 py-1.5">
+    <div className={cn("overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm", className)}>
+      <div className="flex flex-wrap items-center gap-1 border-b border-slate-100 bg-slate-50/80 px-2 py-1.5">
         <ToolBtn active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
           <Bold className="size-3.5" />
         </ToolBtn>

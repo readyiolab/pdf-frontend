@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,21 +40,25 @@ export default function BrandProfilesPage() {
   }, []);
 
   const uploadAsset = async (file: File, kind: "logo" | "letterhead") => {
-    const { uploadUrl, fileKey } = (await apiService.getPresignedUrl(
-      file.name,
-      file.type || "application/octet-stream",
-      file.size
-    )) as { uploadUrl: string; fileKey: string };
-    await fetch(uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
-    });
-    setForm((f) => ({
-      ...f,
-      [kind === "logo" ? "logoKey" : "letterheadKey"]: fileKey,
-    }));
-    toast.success(`${kind} uploaded`);
+    try {
+      const { uploadUrl, fileKey } = (await apiService.getPresignedUrl(
+        file.name,
+        file.type || "application/octet-stream",
+        file.size
+      )) as { uploadUrl: string; fileKey: string };
+      await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      setForm((f) => ({
+        ...f,
+        [kind === "logo" ? "logoKey" : "letterheadKey"]: fileKey,
+      }));
+      toast.success(`${kind === "logo" ? "Logo" : "Letterhead"} uploaded`);
+    } catch (e: any) {
+      toast.error(e.message || "Upload failed");
+    }
   };
 
   const save = async () => {
@@ -81,17 +84,20 @@ export default function BrandProfilesPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <Link to="/letters/studio" className="text-xs text-muted-foreground hover:underline">
-            ← Letter Studio
-          </Link>
-          <h1 className="text-xl font-bold">Brand profiles</h1>
-        </div>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+          Identity
+        </p>
+        <h1 className="font-heading mt-1 text-2xl font-bold tracking-tight text-slate-900">
+          Brand profiles
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Logo, letterhead, signatory, and fonts applied to every generated letter.
+        </p>
       </div>
 
-      <div className="space-y-4 rounded-2xl border p-4">
+      <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label>Profile name</Label>
@@ -126,9 +132,11 @@ export default function BrandProfilesPage() {
             onChange={(e) => setForm({ ...form, footerText: e.target.value })}
           />
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="cursor-pointer text-sm">
-            <span className="rounded-full border px-3 py-1.5 hover:bg-muted">Upload logo</span>
+            <span className="inline-flex rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium text-slate-700 transition hover:bg-slate-100">
+              Upload logo
+            </span>
             <input
               type="file"
               accept="image/*"
@@ -137,35 +145,51 @@ export default function BrandProfilesPage() {
             />
           </label>
           <label className="cursor-pointer text-sm">
-            <span className="rounded-full border px-3 py-1.5 hover:bg-muted">Upload letterhead</span>
+            <span className="inline-flex rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 font-medium text-slate-700 transition hover:bg-slate-100">
+              Upload letterhead
+            </span>
             <input
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={(e) => e.target.files?.[0] && uploadAsset(e.target.files[0], "letterhead")}
+              onChange={(e) =>
+                e.target.files?.[0] && uploadAsset(e.target.files[0], "letterhead")
+              }
             />
           </label>
-          {form.logoKey && <span className="text-xs text-muted-foreground">Logo ready</span>}
+          {form.logoKey && (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+              Logo ready
+            </span>
+          )}
           {form.letterheadKey && (
-            <span className="text-xs text-muted-foreground">Letterhead ready</span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+              Letterhead ready
+            </span>
           )}
         </div>
-        <Button onClick={save} disabled={saving} className="rounded-full">
+        <Button
+          onClick={save}
+          disabled={saving}
+          className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
+        >
           {saving ? "Saving…" : "Save brand profile"}
         </Button>
       </div>
 
-      <div className="divide-y rounded-xl border">
+      <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200/90 bg-white shadow-sm">
         {brands.map((b) => (
-          <div key={b.id} className="px-4 py-3 text-sm">
-            <div className="font-medium">{b.name}</div>
-            <div className="text-xs text-muted-foreground">
+          <div key={b.id} className="px-4 py-3.5 text-sm">
+            <div className="font-semibold text-slate-900">{b.name}</div>
+            <div className="mt-0.5 text-xs text-slate-500">
               {b.signatoryName || "No signatory"} · {b.defaultFont}
             </div>
           </div>
         ))}
         {brands.length === 0 && (
-          <div className="px-4 py-6 text-sm text-muted-foreground">No brand profiles yet.</div>
+          <div className="px-4 py-8 text-center text-sm text-slate-500">
+            No brand profiles yet.
+          </div>
         )}
       </div>
     </div>

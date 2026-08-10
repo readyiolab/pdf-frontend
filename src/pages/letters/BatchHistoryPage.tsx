@@ -4,6 +4,7 @@ import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { ArrowRight, Search } from "lucide-react";
 
 function orgId() {
   return localStorage.getItem("letter_org_id") || "";
@@ -13,6 +14,7 @@ export default function BatchHistoryPage() {
   const [batches, setBatches] = useState<any[]>([]);
   const [question, setQuestion] = useState("Show me employees whose letter failed to send");
   const [results, setResults] = useState<any[] | null>(null);
+  const [asking, setAsking] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -23,40 +25,55 @@ export default function BatchHistoryPage() {
   }, []);
 
   const runQuery = async () => {
+    setAsking(true);
     try {
       const res = await lettersApi.aiQuery(orgId(), question);
       setResults(res.results);
     } catch (e: any) {
       toast.error(e.message);
+    } finally {
+      setAsking(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <Link to="/letters/studio" className="text-xs text-muted-foreground hover:underline">
-          ← Letter Studio
-        </Link>
-        <h1 className="text-xl font-bold">Batch history</h1>
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Archive</p>
+        <h1 className="font-heading mt-1 text-2xl font-bold tracking-tight text-slate-900">
+          Batch history
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Reopen past batches, download reports, or search with plain language.
+        </p>
       </div>
 
-      <div className="flex gap-2 rounded-xl border p-3">
-        <Input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask in plain language…"
-        />
-        <Button className="shrink-0 rounded-full" onClick={runQuery}>
-          Ask
+      <div className="flex gap-2 rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            className="pl-9"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ask in plain language…"
+            onKeyDown={(e) => e.key === "Enter" && runQuery()}
+          />
+        </div>
+        <Button
+          className="shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700"
+          onClick={runQuery}
+          disabled={asking}
+        >
+          {asking ? "Searching…" : "Ask"}
         </Button>
       </div>
 
       {results && (
-        <div className="rounded-xl border p-3 text-sm">
-          <div className="mb-2 font-medium">{results.length} matches</div>
-          <div className="max-h-48 space-y-1 overflow-auto text-xs">
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm text-sm">
+          <div className="mb-2 font-semibold text-slate-900">{results.length} matches</div>
+          <div className="max-h-48 space-y-1 overflow-auto text-xs text-slate-600">
             {results.map((r) => (
-              <div key={r.id} className="border-b py-1">
+              <div key={r.id} className="border-b border-slate-100 py-1.5 last:border-0">
                 {r.employee?.Employee_Name || "Employee"} · send {r.sendStatus} · batch{" "}
                 {String(r.batchId).slice(0, 8)}
               </div>
@@ -65,46 +82,52 @@ export default function BatchHistoryPage() {
         </div>
       )}
 
-      <div className="divide-y rounded-xl border">
+      <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200/90 bg-white shadow-sm">
         {batches.map((b) => (
           <Link
             key={b.id}
             to={`/letters/batches/${b.id}`}
-            className="flex items-center justify-between px-4 py-3 text-sm hover:bg-muted/40"
+            className="flex items-center justify-between gap-3 px-4 py-3.5 text-sm transition hover:bg-slate-50"
           >
-            <div>
-              <div className="font-medium">{b.templateName || "Batch"}</div>
-              <div className="text-xs text-muted-foreground">
+            <div className="min-w-0">
+              <div className="truncate font-semibold text-slate-900">
+                {b.templateName || "Batch"}
+              </div>
+              <div className="mt-0.5 text-xs text-slate-500">
                 {b.totalRows} rows · gen {b.generatedCount} · sent {b.sentCount} · {b.status}
                 {b.templateVersion != null ? ` · template v${b.templateVersion}` : ""}
               </div>
               {b.aiSummary && (
-                <div className="mt-1 text-xs text-muted-foreground">{b.aiSummary}</div>
+                <div className="mt-1 text-xs text-slate-500">{b.aiSummary}</div>
               )}
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={async (e) => {
-                e.preventDefault();
-                const { report } = await lettersApi.report(orgId(), b.id);
-                const blob = new Blob([JSON.stringify(report, null, 2)], {
-                  type: "application/json",
-                });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `batch-${b.id}-report.json`;
-                a.click();
-              }}
-            >
-              Report
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-lg text-xs"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  const { report } = await lettersApi.report(orgId(), b.id);
+                  const blob = new Blob([JSON.stringify(report, null, 2)], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `batch-${b.id}-report.json`;
+                  a.click();
+                }}
+              >
+                Report
+              </Button>
+              <ArrowRight className="size-4 text-slate-400" />
+            </div>
           </Link>
         ))}
         {batches.length === 0 && (
-          <div className="p-6 text-sm text-muted-foreground">No batches yet.</div>
+          <div className="px-4 py-10 text-center text-sm text-slate-500">No batches yet.</div>
         )}
       </div>
     </div>

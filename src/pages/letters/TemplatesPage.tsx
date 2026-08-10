@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { LetterEditor } from "@/components/letters/LetterEditor";
 import { Button } from "@/components/ui/button";
@@ -120,16 +120,18 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[240px_1fr]">
-      <aside className="space-y-3">
-        <Link to="/letters/studio" className="text-xs text-muted-foreground hover:underline">
-          ← Letter Studio
-        </Link>
-        <h1 className="text-lg font-bold">Templates</h1>
+    <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+      <aside className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm">
+        <div>
+          <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-indigo-600">
+            Library
+          </p>
+          <h1 className="font-heading px-2 text-lg font-bold text-slate-900">Templates</h1>
+        </div>
         <Button
           variant="outline"
           size="sm"
-          className="w-full rounded-full"
+          className="w-full rounded-xl border-slate-200"
           onClick={() => {
             setSelectedId(null);
             setName("New letter");
@@ -138,18 +140,20 @@ export default function TemplatesPage() {
         >
           New template
         </Button>
-        <div className="max-h-[60vh] space-y-1 overflow-auto">
+        <div className="max-h-[55vh] space-y-0.5 overflow-auto">
           {templates.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => openTemplate(t)}
-              className={`block w-full rounded-lg px-3 py-2 text-left text-sm ${
-                selectedId === t.id ? "bg-muted font-medium" : "hover:bg-muted/50"
+              className={`block w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                selectedId === t.id
+                  ? "bg-indigo-50 font-semibold text-indigo-900"
+                  : "text-slate-700 hover:bg-slate-50"
               }`}
             >
               <div className="truncate">{t.name}</div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-[11px] font-normal text-slate-500">
                 {t.type} · v{t.version}
               </div>
             </button>
@@ -157,7 +161,7 @@ export default function TemplatesPage() {
         </div>
       </aside>
 
-      <div className="space-y-4">
+      <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label>Name</Label>
@@ -185,43 +189,48 @@ export default function TemplatesPage() {
             type="button"
             variant="outline"
             size="sm"
-            className="rounded-full"
+            className="rounded-xl border-slate-200"
             onClick={() => setAiOpen((v) => !v)}
           >
             <Sparkles className="mr-1 size-3.5" /> Ask AI to draft
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => polish("formal")}>
+          <Button type="button" variant="ghost" size="sm" className="rounded-lg" onClick={() => polish("formal")}>
             Polish formal
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => polish("concise")}>
+          <Button type="button" variant="ghost" size="sm" className="rounded-lg" onClick={() => polish("concise")}>
             Polish concise
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => polish("add-disclaimer")}>
+          <Button type="button" variant="ghost" size="sm" className="rounded-lg" onClick={() => polish("add-disclaimer")}>
             Add disclaimer
           </Button>
         </div>
 
         {aiOpen && (
-          <div className="flex gap-2 rounded-xl border bg-muted/30 p-3">
+          <div className="flex gap-2 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
             <Input
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               placeholder="Describe the letter…"
+              className="bg-white"
             />
-            <Button type="button" onClick={askAiDraft} className="shrink-0 rounded-full">
+            <Button
+              type="button"
+              onClick={askAiDraft}
+              className="shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700"
+            >
               Generate
             </Button>
           </div>
         )}
 
         {polishSuggestion && (
-          <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-3 text-sm">
-            <div className="mb-2 font-medium">AI polish suggestion</div>
-            <p className="mb-3 whitespace-pre-wrap text-muted-foreground">{polishSuggestion}</p>
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-sm">
+            <div className="mb-2 font-semibold text-slate-900">AI polish suggestion</div>
+            <p className="mb-3 whitespace-pre-wrap text-slate-600">{polishSuggestion}</p>
             <div className="flex gap-2">
               <Button
                 size="sm"
-                className="rounded-full"
+                className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
                 onClick={() => {
                   setContent({
                     type: "doc",
@@ -244,14 +253,18 @@ export default function TemplatesPage() {
 
         <LetterEditor key={selectedId || "new"} content={content} onChange={setContent} />
 
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={save} disabled={saving} className="rounded-full">
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+          <Button
+            onClick={save}
+            disabled={saving}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
+          >
             {saving ? "Saving…" : "Save template"}
           </Button>
           {selectedId && (
             <Button
               variant="outline"
-              className="rounded-full"
+              className="rounded-xl border-slate-200"
               onClick={() => navigate(`/letters/batches/new?templateId=${selectedId}`)}
             >
               Use in batch

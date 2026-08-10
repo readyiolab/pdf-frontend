@@ -39,6 +39,11 @@ const BatchWizardPage = lazy(() => import("./pages/letters/BatchWizardPage"));
 const BatchHistoryPage = lazy(() => import("./pages/letters/BatchHistoryPage"));
 const TeamSettingsPage = lazy(() => import("./pages/letters/TeamSettingsPage"));
 const AcceptInvitePage = lazy(() => import("./pages/letters/AcceptInvitePage"));
+const LetterStudioShell = lazy(() =>
+  import("./components/letters/LetterStudioShell").then((m) => ({
+    default: m.LetterStudioShell,
+  }))
+);
 
 const PageLoader = () => (
   <div className="flex min-h-[50vh] items-center justify-center animate-fade-in">
@@ -128,55 +133,23 @@ function App() {
                 } />
 
                 <Route path="letters" element={<LettersLanding />} />
-                <Route path="letters/studio" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <LettersHub />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
-                <Route path="letters/brands" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <BrandProfilesPage />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
-                <Route path="letters/templates" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <TemplatesPage />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
-                <Route path="letters/batches/new" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <BatchWizardPage />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
-                <Route path="letters/batches/:batchId" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <BatchWizardPage />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
-                <Route path="letters/history" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <BatchHistoryPage />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
-                <Route path="letters/team" element={
-                  <ProtectedRoute>
-                    <VerifiedRoute>
-                      <TeamSettingsPage />
-                    </VerifiedRoute>
-                  </ProtectedRoute>
-                } />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <VerifiedRoute>
+                        <LetterStudioShell />
+                      </VerifiedRoute>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="letters/studio" element={<LettersHub />} />
+                  <Route path="letters/brands" element={<BrandProfilesPage />} />
+                  <Route path="letters/templates" element={<TemplatesPage />} />
+                  <Route path="letters/batches/new" element={<BatchWizardPage />} />
+                  <Route path="letters/batches/:batchId" element={<BatchWizardPage />} />
+                  <Route path="letters/history" element={<BatchHistoryPage />} />
+                  <Route path="letters/team" element={<TeamSettingsPage />} />
+                </Route>
                 <Route path="orgs/accept-invite" element={
                   <ProtectedRoute>
                     <VerifiedRoute>
