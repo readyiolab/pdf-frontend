@@ -45,6 +45,14 @@ const LetterStudioShell = lazy(() =>
     default: m.LetterStudioShell,
   }))
 );
+const DiagramStudioShell = lazy(() =>
+  import("./components/diagrams/DiagramStudioShell").then((m) => ({
+    default: m.DiagramStudioShell,
+  }))
+);
+const DiagramsListPage = lazy(() => import("./pages/diagrams/DiagramsListPage"));
+const DiagramEditorPage = lazy(() => import("./pages/diagrams/DiagramEditorPage"));
+const SharedDiagramPage = lazy(() => import("./pages/diagrams/SharedDiagramPage"));
 
 const PageLoader = () => (
   <div className="flex min-h-[50vh] items-center justify-center animate-fade-in">
@@ -168,6 +176,24 @@ function App() {
                     </VerifiedRoute>
                   </ProtectedRoute>
                 } />
+
+                <Route
+                  path="diagrams/shared/:token"
+                  element={<SharedDiagramPage />}
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <VerifiedRoute>
+                        <DiagramStudioShell />
+                      </VerifiedRoute>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="diagrams" element={<DiagramsListPage />} />
+                  <Route path="diagrams/new" element={<DiagramEditorPage />} />
+                  <Route path="diagrams/:id" element={<DiagramEditorPage />} />
+                </Route>
 
                 <Route path="enterprise" element={<EnterpriseByoc />} />
                 <Route path="desktop" element={<DesktopToolkit />} />
