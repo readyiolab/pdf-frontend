@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -325,6 +326,8 @@ export default function BatchWizardPage() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let delay = 1000;
+    let stableTicks = 0;
+    let lastKey = "";
 
     const tick = async () => {
       if (cancelled) return;
@@ -336,6 +339,12 @@ export default function BatchWizardPage() {
         const p = await lettersApi.progress(orgId(), batchId);
         if (cancelled) return;
         setProgress(p);
+        const key = `${p.generated}-${p.pending}-${p.failed}-${p.status}`;
+        if (key === lastKey) stableTicks += 1;
+        else {
+          stableTicks = 0;
+          lastKey = key;
+        }
         if (p.status === "GENERATED" || p.pending === 0) {
           try {
             const sum = await lettersApi.aiSummary(orgId(), batchId);
@@ -350,6 +359,15 @@ export default function BatchWizardPage() {
           const accounts = await lettersApi.mailAccounts();
           setMailAccounts(accounts.accounts);
           return;
+        }
+        // ~2 minutes with no progress change → surface stuck state
+        if (stableTicks >= 24 && p.pending > 0 && p.generated === 0) {
+          setProgress((prev: any) => ({
+            ...prev,
+            lastError:
+              prev?.lastError ||
+              "PDF creation is taking too long. The server may be stuck launching Chrome — ask your admin to check pm2 logs.",
+          }));
         }
       } catch {
         /* ignore poll errors */
@@ -555,7 +573,8 @@ export default function BatchWizardPage() {
                 disabled={busy || !templateId}
                 onClick={createBatch}
               >
-                Continue
+                {busy ? <Spinner className="mr-2 size-4" /> : null}
+                {busy ? "Creating…" : "Continue"}
               </Button>
             </div>
           )}
@@ -583,7 +602,8 @@ export default function BatchWizardPage() {
                     disabled={busy || missingRequired.length > 0}
                     onClick={applyMap}
                   >
-                    Save mapping and validate
+                    {busy ? <Spinner className="mr-2 size-4" /> : null}
+                    {busy ? "Checking…" : "Save mapping and validate"}
                   </Button>
                 </div>
               )}
@@ -831,7 +851,8 @@ export default function BatchWizardPage() {
                 disabled={busy || !approved}
                 onClick={startGenerate}
               >
-                Generate PDFs
+                {busy ? <Spinner className="mr-2 size-4" /> : null}
+                {busy ? "Starting…" : "Generate PDFs"}
               </Button>
             </div>
           )}
@@ -840,20 +861,41 @@ export default function BatchWizardPage() {
             <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-slate-900">Creating PDFs</h2>
               <Progress value={pct} />
-              <p className="text-sm text-slate-600">
+              <p className="flex items-center gap-2 text-sm text-slate-600">
+                {progress.pending > 0 && !(progress.failed > 0 && progress.generated === 0) ? (
+                  <Spinner className="size-4 text-indigo-600" />
+                ) : null}
                 {progress.generated} done · {progress.pending} waiting
                 {progress.failed > 0 ? ` · ${progress.failed} failed` : ""}
               </p>
-              {progress.failed > 0 && progress.generated === 0 && (
+              {progress.lastError && progress.generated === 0 && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-900">
+                  <p className="font-semibold">PDFs could not be created</p>
+                  <p className="mt-1 text-xs leading-relaxed text-rose-800">{progress.lastError}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 rounded-xl border-rose-200"
+                    disabled={busy}
+                    onClick={() => {
+                      setProgress(null);
+                      setApproved(false);
+                    }}
+                  >
+                    Back — try again
+                  </Button>
+                </div>
+              )}
+              {progress.failed > 0 && progress.generated === 0 && !progress.lastError && (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-900">
                   <p className="font-semibold">PDFs could not be created</p>
                   <p className="mt-1 text-xs leading-relaxed text-rose-800">
-                    {progress.lastError ||
-                      "The server failed while making the letter PDFs. Try again, or ask your admin to check the letter worker logs."}
+                    The server failed while making the letter PDFs. Try again, or ask your admin to
+                    check the letter worker logs.
                   </p>
                 </div>
               )}
-              {progress.pending > 0 && (
+              {progress.pending > 0 && !progress.lastError && (
                 <div className="h-2 animate-pulse rounded bg-slate-100" />
               )}
             </div>
@@ -975,7 +1017,12 @@ export default function BatchWizardPage() {
                     disabled={busy || !(progress?.generated > 0)}
                     onClick={doSend}
                   >
-                    {sendMode === "SEND_NOW" && canSend ? "Confirm & send now" : "Continue"}
+                    {busy ? <Spinner className="mr-2 size-4" /> : null}
+                    {busy
+                      ? "Working…"
+                      : sendMode === "SEND_NOW" && canSend
+                        ? "Confirm & send now"
+                        : "Continue"}
                   </Button>
                 </>
               )}
