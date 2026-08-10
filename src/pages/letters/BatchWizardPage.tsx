@@ -262,57 +262,57 @@ export default function BatchWizardPage() {
   }, [progress]);
 
   const STEP_META: { id: Step; label: string }[] = [
-    { id: "setup", label: "Setup" },
-    { id: "map", label: "Map" },
-    { id: "validate", label: "Validate" },
-    { id: "generate", label: "Generate" },
-    { id: "send", label: "Send" },
+    { id: "setup", label: "Choose template" },
+    { id: "map", label: "Upload Excel" },
+    { id: "validate", label: "Check data" },
+    { id: "generate", label: "Make PDFs" },
+    { id: "send", label: "Email" },
   ];
   const stepIndex = STEP_META.findIndex((s) => s.id === step);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Workflow</p>
-        <h1 className="font-heading mt-1 text-2xl font-bold tracking-tight text-slate-900">
-          Batch wizard
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-slate-200 px-4 py-4 sm:px-5">
+        <h1 className="font-heading text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+          New batch
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Import Excel, validate rows, generate PDFs, then send or draft.
+          Upload employee data, check it, then create PDFs.
           {batchId ? ` · ${batchId.slice(0, 8)}…` : ""}
         </p>
-      </div>
-
-      <ol className="flex flex-wrap gap-1.5 rounded-2xl border border-slate-200/90 bg-white p-2 shadow-sm">
-        {STEP_META.map((s, i) => {
-          const active = s.id === step;
-          const done = i < stepIndex;
-          return (
-            <li
-              key={s.id}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-center text-xs font-semibold min-w-[4.5rem] ${
-                active
-                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/20"
-                  : done
-                    ? "bg-indigo-50 text-indigo-800"
-                    : "text-slate-400"
-              }`}
-            >
-              <span
-                className={`flex size-5 items-center justify-center rounded-full text-[10px] ${
-                  active ? "bg-white/20" : done ? "bg-indigo-100" : "bg-slate-100"
+        <ol className="mt-4 flex flex-wrap gap-1.5">
+          {STEP_META.map((s, i) => {
+            const active = s.id === step;
+            const done = i < stepIndex;
+            return (
+              <li
+                key={s.id}
+                className={`flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-center text-xs font-semibold ${
+                  active
+                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/20"
+                    : done
+                      ? "bg-indigo-50 text-indigo-800"
+                      : "bg-slate-100 text-slate-400"
                 }`}
               >
-                {i + 1}
-              </span>
-              {s.label}
-            </li>
-          );
-        })}
-      </ol>
+                <span
+                  className={`flex size-5 items-center justify-center rounded-full text-[10px] ${
+                    active ? "bg-white/20" : done ? "bg-indigo-100" : "bg-white"
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                {s.label}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className="mx-auto max-w-3xl space-y-4">
       {step === "setup" && (
-        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
+        <div className="space-y-4 rounded-xl border border-slate-200 p-4">
           <div>
             <Label>Template</Label>
             <select
@@ -633,6 +633,8 @@ export default function BatchWizardPage() {
           </Button>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }

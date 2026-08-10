@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ArrowRight, Search } from "lucide-react";
+import { StudioPageHeader } from "@/components/letters/StudioPageHeader";
 
 function orgId() {
   return localStorage.getItem("letter_org_id") || "";
@@ -37,98 +38,94 @@ export default function BatchHistoryPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Archive</p>
-        <h1 className="font-heading mt-1 text-2xl font-bold tracking-tight text-slate-900">
-          Batch history
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Reopen past batches, download reports, or search with plain language.
-        </p>
-      </div>
-
-      <div className="flex gap-2 rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            className="pl-9"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask in plain language…"
-            onKeyDown={(e) => e.key === "Enter" && runQuery()}
-          />
-        </div>
-        <Button
-          className="shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700"
-          onClick={runQuery}
-          disabled={asking}
-        >
-          {asking ? "Searching…" : "Ask"}
-        </Button>
-      </div>
-
-      {results && (
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm text-sm">
-          <div className="mb-2 font-semibold text-slate-900">{results.length} matches</div>
-          <div className="max-h-48 space-y-1 overflow-auto text-xs text-slate-600">
-            {results.map((r) => (
-              <div key={r.id} className="border-b border-slate-100 py-1.5 last:border-0">
-                {r.employee?.Employee_Name || "Employee"} · send {r.sendStatus} · batch{" "}
-                {String(r.batchId).slice(0, 8)}
-              </div>
-            ))}
+    <div className="flex min-h-full flex-col">
+      <StudioPageHeader
+        title="History"
+        description="Reopen past batches, download reports, or search in plain language."
+      />
+      <div className="space-y-4 p-4 sm:p-5">
+        <div className="flex gap-2 rounded-xl border border-slate-200 p-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              className="border-0 pl-9 shadow-none focus-visible:ring-0"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Ask in plain language…"
+              onKeyDown={(e) => e.key === "Enter" && runQuery()}
+            />
           </div>
-        </div>
-      )}
-
-      <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200/90 bg-white shadow-sm">
-        {batches.map((b) => (
-          <Link
-            key={b.id}
-            to={`/letters/batches/${b.id}`}
-            className="flex items-center justify-between gap-3 px-4 py-3.5 text-sm transition hover:bg-slate-50"
+          <Button
+            className="shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700"
+            onClick={runQuery}
+            disabled={asking}
           >
-            <div className="min-w-0">
-              <div className="truncate font-semibold text-slate-900">
-                {b.templateName || "Batch"}
-              </div>
-              <div className="mt-0.5 text-xs text-slate-500">
-                {b.totalRows} rows · gen {b.generatedCount} · sent {b.sentCount} · {b.status}
-                {b.templateVersion != null ? ` · template v${b.templateVersion}` : ""}
-              </div>
-              {b.aiSummary && (
-                <div className="mt-1 text-xs text-slate-500">{b.aiSummary}</div>
-              )}
+            {asking ? "Searching…" : "Ask"}
+          </Button>
+        </div>
+
+        {results && (
+          <div className="rounded-xl border border-slate-200 p-4 text-sm">
+            <div className="mb-2 font-semibold text-slate-900">{results.length} matches</div>
+            <div className="max-h-48 space-y-1 overflow-auto text-xs text-slate-600">
+              {results.map((r) => (
+                <div key={r.id} className="border-b border-slate-100 py-1.5 last:border-0">
+                  {r.employee?.Employee_Name || "Employee"} · send {r.sendStatus} · batch{" "}
+                  {String(r.batchId).slice(0, 8)}
+                </div>
+              ))}
             </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-lg text-xs"
-                onClick={async (e) => {
-                  e.preventDefault();
-                  const { report } = await lettersApi.report(orgId(), b.id);
-                  const blob = new Blob([JSON.stringify(report, null, 2)], {
-                    type: "application/json",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `batch-${b.id}-report.json`;
-                  a.click();
-                }}
-              >
-                Report
-              </Button>
-              <ArrowRight className="size-4 text-slate-400" />
-            </div>
-          </Link>
-        ))}
-        {batches.length === 0 && (
-          <div className="px-4 py-10 text-center text-sm text-slate-500">No batches yet.</div>
+          </div>
         )}
+
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+          {batches.map((b) => (
+            <Link
+              key={b.id}
+              to={`/letters/batches/${b.id}`}
+              className="flex items-center justify-between gap-3 px-4 py-3.5 text-sm transition hover:bg-slate-50"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-semibold text-slate-900">
+                  {b.templateName || "Batch"}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  {b.totalRows} rows · gen {b.generatedCount} · sent {b.sentCount} · {b.status}
+                  {b.templateVersion != null ? ` · template v${b.templateVersion}` : ""}
+                </div>
+                {b.aiSummary && (
+                  <div className="mt-1 text-xs text-slate-500">{b.aiSummary}</div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 rounded-lg text-xs"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    const { report } = await lettersApi.report(orgId(), b.id);
+                    const blob = new Blob([JSON.stringify(report, null, 2)], {
+                      type: "application/json",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `batch-${b.id}-report.json`;
+                    a.click();
+                  }}
+                >
+                  Report
+                </Button>
+                <ArrowRight className="size-4 text-slate-400" />
+              </div>
+            </Link>
+          ))}
+          {batches.length === 0 && (
+            <div className="px-4 py-10 text-center text-sm text-slate-500">No batches yet.</div>
+          )}
+        </div>
       </div>
     </div>
   );
