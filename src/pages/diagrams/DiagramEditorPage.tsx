@@ -355,7 +355,7 @@ export default function DiagramEditorPage() {
       label: "File",
       items: [
         { type: "item" as const, label: "New", onClick: () => navigate("/diagrams/new") },
-        { type: "item" as const, label: "Open…", onClick: () => navigate("/diagrams") },
+        { type: "item" as const, label: "Open…", onClick: () => navigate("/diagrams/studio") },
         { type: "sep" as const },
         { type: "item" as const, label: "Save", shortcut: "Ctrl+S", onClick: () => void save() },
         {
@@ -492,7 +492,7 @@ export default function DiagramEditorPage() {
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-white text-[#0f172a]">
       {/* Title bar */}
       <div className="flex h-11 shrink-0 items-center gap-3 border-b border-[#cfd8e3] bg-[#f8fafc] px-3">
-        <Link to="/diagrams" className="flex size-7 items-center justify-center rounded-md bg-[#f97316] text-xs font-bold text-white">
+        <Link to="/diagrams" className="flex size-7 items-center justify-center rounded-md bg-[#f97316] text-xs font-bold text-white" title="Diagram Studio">
           D
         </Link>
         <input

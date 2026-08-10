@@ -3,7 +3,7 @@ import { LayoutGrid, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { to: "/diagrams", label: "My diagrams", icon: LayoutGrid, end: true },
+  { to: "/diagrams/studio", label: "My diagrams", icon: LayoutGrid, end: true },
   { to: "/diagrams/new", label: "New", icon: Plus, end: true },
 ];
 

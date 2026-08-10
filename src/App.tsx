@@ -50,6 +50,7 @@ const DiagramStudioShell = lazy(() =>
     default: m.DiagramStudioShell,
   }))
 );
+const DiagramsLanding = lazy(() => import("./pages/diagrams/DiagramsLanding"));
 const DiagramsListPage = lazy(() => import("./pages/diagrams/DiagramsListPage"));
 const DiagramEditorPage = lazy(() => import("./pages/diagrams/DiagramEditorPage"));
 const SharedDiagramPage = lazy(() => import("./pages/diagrams/SharedDiagramPage"));
@@ -177,6 +178,7 @@ function App() {
                   </ProtectedRoute>
                 } />
 
+                <Route path="diagrams" element={<DiagramsLanding />} />
                 <Route
                   path="diagrams/shared/:token"
                   element={<SharedDiagramPage />}
@@ -190,7 +192,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="diagrams" element={<DiagramsListPage />} />
+                  <Route path="diagrams/studio" element={<DiagramsListPage />} />
                   <Route path="diagrams/new" element={<DiagramEditorPage />} />
                   <Route path="diagrams/:id" element={<DiagramEditorPage />} />
                 </Route>
