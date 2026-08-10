@@ -16,7 +16,7 @@ export function StudioPageHeader({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/80 bg-white px-4 py-4 sm:px-5",
+        "flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-4 sm:px-5",
         className
       )}
     >
@@ -41,10 +41,33 @@ export function StudioPrimaryButton({
   return (
     <Button
       {...props}
-      className={cn("h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700", className)}
+      className={cn(
+        "h-10 rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40",
+        className
+      )}
     >
       {children}
     </Button>
+  );
+}
+
+/** Shared body padding for studio pages (non-flush layouts). */
+export function StudioPageBody({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={cn("space-y-4 p-4 sm:p-5", className)}>{children}</div>;
+}
+
+export function StudioSkeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn("animate-pulse rounded-xl bg-slate-100", className || "h-24")}
+      aria-hidden
+    />
   );
 }
 

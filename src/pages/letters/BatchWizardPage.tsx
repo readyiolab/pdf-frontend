@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
@@ -7,6 +15,14 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  ISSUE_LABELS,
+  autoMapHeaders,
+  fileToBase64,
+  unmappedRequired,
+  type MappingSource,
+} from "@/lib/letterMapping";
+import { cn } from "@/lib/utils";
 
 function orgId() {
   return localStorage.getItem("letter_org_id") || "";
@@ -14,11 +30,58 @@ function orgId() {
 
 type Step = "setup" | "map" | "validate" | "generate" | "send";
 
+const MappingRow = memo(function MappingRow({
+  header,
+  value,
+  source,
+  systemFields,
+  onChange,
+}: {
+  header: string;
+  value: string;
+  source: MappingSource;
+  systemFields: string[];
+  onChange: (header: string, field: string) => void;
+}) {
+  return (
+    <tr className="border-t border-slate-100 [content-visibility:auto]">
+      <td className="px-3 py-2">
+        <span className="font-medium text-slate-800">{header}</span>
+        {source === "ai" && (
+          <span className="ml-2 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+            AI suggested
+          </span>
+        )}
+        {(source === "auto" || source === "exact") && (
+          <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+            Auto
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-2">
+        <select
+          className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+          value={value}
+          onChange={(e) => onChange(header, e.target.value)}
+        >
+          <option value="">— skip —</option>
+          {systemFields.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+      </td>
+    </tr>
+  );
+});
+
 export default function BatchWizardPage() {
   const { batchId: routeBatchId } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canSend = user?.plan !== "FREE";
   const [step, setStep] = useState<Step>("setup");
   const [templates, setTemplates] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
@@ -26,12 +89,17 @@ export default function BatchWizardPage() {
   const [brandProfileId, setBrandProfileId] = useState("");
   const [batchId, setBatchId] = useState(routeBatchId || "");
   const [headers, setHeaders] = useState<string[]>([]);
-  const [rows, setRows] = useState<any[]>([]);
+  const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
+  const [rowCount, setRowCount] = useState(0);
+  const [sourceFileName, setSourceFileName] = useState("");
+  const allRowsRef = useRef<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [mapSources, setMapSources] = useState<Record<string, MappingSource>>({});
   const [systemFields, setSystemFields] = useState<string[]>([]);
-  const [aiSuggested, setAiSuggested] = useState<Record<string, boolean>>({});
+  const [aiNote, setAiNote] = useState<string | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [issues, setIssues] = useState<any[]>([]);
+  const [showAllIssues, setShowAllIssues] = useState(false);
   const [preview, setPreview] = useState<any>(null);
   const [approved, setApproved] = useState(false);
   const [passwordMode, setPasswordMode] = useState("NONE");
@@ -39,11 +107,15 @@ export default function BatchWizardPage() {
   const [mailAccounts, setMailAccounts] = useState<any[]>([]);
   const [mailAccountId, setMailAccountId] = useState("");
   const [sendMode, setSendMode] = useState<"CREATE_DRAFTS" | "SEND_NOW" | "GENERATE_ONLY">(
-    "CREATE_DRAFTS"
+    canSend ? "CREATE_DRAFTS" : "GENERATE_ONLY"
   );
   const [confirmCount, setConfirmCount] = useState<number | "">("");
   const [subject, setSubject] = useState("Your employee letter");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setSendMode(canSend ? "CREATE_DRAFTS" : "GENERATE_ONLY");
+  }, [canSend]);
 
   useEffect(() => {
     (async () => {
@@ -117,39 +189,58 @@ export default function BatchWizardPage() {
     }
     setBusy(true);
     try {
-      const buf = await file.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(buf).reduce((s, b) => s + String.fromCharCode(b), "")
-      );
+      const base64 = await fileToBase64(file);
       const parsed = await lettersApi.parseUpload(orgId(), batchId, {
         fileBase64: base64,
         sourceFileName: file.name,
       });
+      const fields = parsed.systemFields?.length
+        ? parsed.systemFields
+        : [
+            "Employee_ID",
+            "Employee_Name",
+            "Employee_Email",
+            "Designation",
+            "Department",
+            "Old_CTC",
+            "New_CTC",
+            "Increment_Percent",
+            "Effective_Date",
+            "PDF_Password",
+            "Manager_Name",
+          ];
       setHeaders(parsed.headers);
-      setRows(parsed.rows);
-      setSystemFields(parsed.systemFields);
-      const initial: Record<string, string> = {};
-      for (const h of parsed.headers) initial[h] = "";
-      setMapping(initial);
+      setSystemFields(fields);
+      setSourceFileName(file.name);
+      setRowCount(parsed.totalRows || parsed.rows?.length || 0);
+      allRowsRef.current = parsed.rows || [];
+      setPreviewRows((parsed.rows || []).slice(0, 10));
+
+      const auto = autoMapHeaders(parsed.headers, fields);
+      let next = { ...auto.mapping };
+      let sources = { ...auto.sources };
+      setAiNote(null);
 
       try {
         const sug = await lettersApi.aiSuggestMapping(orgId(), parsed.headers);
-        const next = { ...initial };
-        const badges: Record<string, boolean> = {};
         for (const [h, v] of Object.entries(sug.suggestions || {})) {
-          if (v && (v as any).field) {
-            next[h] = (v as any).field;
-            badges[h] = true;
+          if (!next[h] && v && (v as any).field) {
+            const field = (v as any).field as string;
+            const alreadyUsed = Object.values(next).includes(field);
+            if (!alreadyUsed && fields.includes(field)) {
+              next[h] = field;
+              sources[h] = "ai";
+            }
           }
         }
-        setMapping(next);
-        setAiSuggested(badges);
       } catch {
-        /* AI optional */
+        setAiNote("AI mapping unavailable — columns were matched automatically.");
       }
 
+      setMapping(next);
+      setMapSources(sources);
       setStep("map");
-      toast.success(`Detected ${parsed.totalRows} rows`);
+      toast.success(`Detected ${parsed.totalRows} rows · ${Object.values(next).filter(Boolean).length} columns mapped`);
     } catch (e: any) {
       toast.error(e.message || "Failed to parse file");
     } finally {
@@ -157,10 +248,28 @@ export default function BatchWizardPage() {
     }
   };
 
+  const onMappingChange = useCallback((header: string, field: string) => {
+    setMapping((m) => ({ ...m, [header]: field }));
+    setMapSources((s) => ({ ...s, [header]: field ? "auto" : "" }));
+  }, []);
+
+  const mappedCount = useMemo(
+    () => Object.values(mapping).filter(Boolean).length,
+    [mapping]
+  );
+  const missingRequired = useMemo(() => unmappedRequired(mapping), [mapping]);
+
   const applyMap = async () => {
+    if (missingRequired.length) {
+      toast.error(`Map required fields: ${missingRequired.join(", ")}`);
+      return;
+    }
     setBusy(true);
     try {
-      await lettersApi.applyMapping(orgId(), batchId, { mapping, rows });
+      await lettersApi.applyMapping(orgId(), batchId, {
+        mapping,
+        rows: allRowsRef.current,
+      });
       const result = await lettersApi.validate(orgId(), batchId, sendMode !== "GENERATE_ONLY");
       setSummary(result.summary);
       const iss = await lettersApi.issues(orgId(), batchId);
@@ -203,14 +312,24 @@ export default function BatchWizardPage() {
     }
   };
 
+  // Poll with backoff; pause when tab is hidden
   useEffect(() => {
     if (step !== "generate" || !batchId) return;
-    const t = setInterval(async () => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let delay = 1000;
+
+    const tick = async () => {
+      if (cancelled) return;
+      if (document.visibilityState === "hidden") {
+        timer = setTimeout(tick, delay);
+        return;
+      }
       try {
         const p = await lettersApi.progress(orgId(), batchId);
+        if (cancelled) return;
         setProgress(p);
         if (p.status === "GENERATED" || p.pending === 0) {
-          clearInterval(t);
           try {
             const sum = await lettersApi.aiSummary(orgId(), batchId);
             setProgress((prev: any) => ({ ...prev, aiSummary: sum.summary }));
@@ -220,18 +339,36 @@ export default function BatchWizardPage() {
           setStep("send");
           const accounts = await lettersApi.mailAccounts();
           setMailAccounts(accounts.accounts);
+          return;
         }
       } catch {
         /* ignore poll errors */
       }
-    }, 2000);
-    return () => clearInterval(t);
+      delay = Math.min(delay * 1.5, 5000);
+      timer = setTimeout(tick, delay);
+    };
+
+    timer = setTimeout(tick, delay);
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !cancelled) {
+        delay = 1000;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(tick, 0);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [step, batchId]);
 
   const doSend = async () => {
     setBusy(true);
     try {
-      if (sendMode === "SEND_NOW") {
+      const mode = canSend ? sendMode : "GENERATE_ONLY";
+      if (mode === "SEND_NOW") {
         const eligible = progress?.generated || preview?.eligibleCount || 0;
         if (Number(confirmCount) !== eligible) {
           toast.error(`Enter confirm count ${eligible} to send now`);
@@ -240,13 +377,13 @@ export default function BatchWizardPage() {
         }
       }
       await lettersApi.send(orgId(), batchId, {
-        mode: user?.plan === "FREE" ? "GENERATE_ONLY" : sendMode,
+        mode,
         subject,
         bodyHtml: "<p>Please find your letter attached.</p>",
-        mailAccountId: sendMode === "GENERATE_ONLY" ? undefined : mailAccountId,
-        confirmSendCount: sendMode === "SEND_NOW" ? Number(confirmCount) : undefined,
+        mailAccountId: mode === "GENERATE_ONLY" ? undefined : mailAccountId,
+        confirmSendCount: mode === "SEND_NOW" ? Number(confirmCount) : undefined,
       });
-      toast.success(sendMode === "GENERATE_ONLY" ? "Done (no email)" : "Send queued");
+      toast.success(mode === "GENERATE_ONLY" ? "Done (no email)" : "Send queued");
       navigate("/letters/history");
     } catch (e: any) {
       toast.error(e.message);
@@ -261,6 +398,60 @@ export default function BatchWizardPage() {
     return Math.round((progress.generated / total) * 100);
   }, [progress]);
 
+  const issueGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { code: string; label: string; severity: string; rows: number[]; messages: Set<string> }
+    >();
+    for (const iss of issues) {
+      for (const e of iss.errors || []) {
+        const key = `${e.code || e.message}|${e.severity}`;
+        const cur = map.get(key) || {
+          code: e.code || "OTHER",
+          label: ISSUE_LABELS[e.code] || e.message || "Issue",
+          severity: e.severity || "WARNING",
+          rows: [] as number[],
+          messages: new Set<string>(),
+        };
+        cur.rows.push(iss.rowIndex + 1);
+        if (e.message) cur.messages.add(e.message);
+        map.set(key, cur);
+      }
+      for (const a of iss.anomalies || []) {
+        const key = `ANOMALY:${a.code || a.message}`;
+        const cur = map.get(key) || {
+          code: a.code || "ANOMALY",
+          label: a.message || "Needs review",
+          severity: "REVIEW",
+          rows: [] as number[],
+          messages: new Set<string>(),
+        };
+        cur.rows.push(iss.rowIndex + 1);
+        map.set(key, cur);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.rows.length - a.rows.length);
+  }, [issues]);
+
+  const causeLine = useMemo(() => {
+    if (!summary) return null;
+    if (summary.blocked === 0 && summary.warning === 0) {
+      return "All rows look good — you can generate PDFs.";
+    }
+    const top = issueGroups[0];
+    if (!top) return null;
+    const n = summary.blocked || top.rows.length;
+    return `${n} row${n === 1 ? "" : "s"}: ${top.label}${
+      missingRequired.length ? ` (map ${missingRequired.join(", ")} first)` : ""
+    }.`;
+  }, [summary, issueGroups, missingRequired]);
+
+  const visibleGroups = showAllIssues ? issueGroups : issueGroups.slice(0, 50);
+  const mappedFields = useMemo(
+    () => headers.filter((h) => mapping[h]).map((h) => ({ excel: h, field: mapping[h] })),
+    [headers, mapping]
+  );
+
   const STEP_META: { id: Step; label: string }[] = [
     { id: "setup", label: "Choose template" },
     { id: "map", label: "Upload Excel" },
@@ -269,6 +460,11 @@ export default function BatchWizardPage() {
     { id: "send", label: "Email" },
   ];
   const stepIndex = STEP_META.findIndex((s) => s.id === step);
+
+  const onFileInput = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) void onFile(f);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -287,18 +483,20 @@ export default function BatchWizardPage() {
             return (
               <li
                 key={s.id}
-                className={`flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-center text-xs font-semibold ${
+                className={cn(
+                  "flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-center text-xs font-semibold transition-colors duration-150",
                   active
                     ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/20"
                     : done
                       ? "bg-indigo-50 text-indigo-800"
                       : "bg-slate-100 text-slate-400"
-                }`}
+                )}
               >
                 <span
-                  className={`flex size-5 items-center justify-center rounded-full text-[10px] ${
+                  className={cn(
+                    "flex size-5 items-center justify-center rounded-full text-[10px]",
                     active ? "bg-white/20" : done ? "bg-indigo-100" : "bg-white"
-                  }`}
+                  )}
                 >
                   {i + 1}
                 </span>
@@ -310,340 +508,419 @@ export default function BatchWizardPage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-        <div className="mx-auto max-w-3xl space-y-4">
-      {step === "setup" && (
-        <div className="space-y-4 rounded-xl border border-slate-200 p-4">
-          <div>
-            <Label>Template</Label>
-            <select
-              className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm"
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-            >
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Brand profile (optional)</Label>
-            <select
-              className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm"
-              value={brandProfileId}
-              onChange={(e) => setBrandProfileId(e.target.value)}
-            >
-              <option value="">None</option>
-              {brands.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <Button
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
-            disabled={busy || !templateId}
-            onClick={createBatch}
-          >
-            Continue
-          </Button>
-        </div>
-      )}
-
-      {(step === "map" || (batchId && step === "setup")) && batchId && step !== "setup" && (
-        <div className="space-y-4 rounded-xl border border-slate-200 p-4">
-          <div>
-            <Label>Upload Excel or CSV</Label>
-            <p className="mt-1 text-xs text-slate-500">
-              Need a test file?{" "}
-              <a
-                href="/samples/letter-batch-sample.csv"
-                download="letter-batch-sample.csv"
-                className="font-semibold text-indigo-700 underline underline-offset-2"
-              >
-                Download sample Excel (CSV)
-              </a>{" "}
-              with 5 employees — then upload it here.
-            </p>
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="mt-2 block w-full text-sm text-slate-600 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-              onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
-            />
-          </div>
-          {headers.length > 0 && (
-            <>
-              <div className="overflow-auto rounded-xl border border-slate-200">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-3 py-2.5 font-semibold text-slate-600">Excel column</th>
-                      <th className="px-3 py-2.5 font-semibold text-slate-600">Maps to</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {headers.map((h) => (
-                      <tr key={h} className="border-t border-slate-100">
-                        <td className="px-3 py-2">
-                          {h}
-                          {aiSuggested[h] && (
-                            <span className="ml-2 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-                              AI suggested
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <select
-                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2"
-                            value={mapping[h] || ""}
-                            onChange={(e) =>
-                              setMapping((m) => ({ ...m, [h]: e.target.value }))
-                            }
-                          >
-                            <option value="">— skip —</option>
-                            {systemFields.map((f) => (
-                              <option key={f} value={f}>
-                                {f}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <Button
-                className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
-                disabled={busy}
-                onClick={applyMap}
-              >
-                Save mapping &amp; validate
-              </Button>
-            </>
-          )}
-          {headers.length === 0 && (
-            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-              Upload an .xlsx or .csv file to detect columns.
-            </p>
-          )}
-        </div>
-      )}
-
-      {step === "validate" && (
         <div className="space-y-4">
-          {summary && (
-            <div className="grid grid-cols-3 gap-3">
-              <Stat label="Ready" value={summary.ready} tone="emerald" />
-              <Stat label="Warning" value={summary.warning} tone="amber" />
-              <Stat label="Blocked" value={summary.blocked} tone="rose" />
-            </div>
-          )}
-          <div className="max-h-64 overflow-auto rounded-2xl border border-slate-200/90 bg-white shadow-sm text-xs">
-            {issues.map((iss) => (
-              <div key={iss.id} className="border-b px-3 py-2">
-                <div className="font-medium">
-                  Row {iss.rowIndex + 1} · {iss.validationStatus}
-                  {iss.anomalies?.length > 0 && (
-                    <span className="ml-2 rounded bg-violet-500/15 px-1.5 text-[10px] text-violet-700">
-                      REVIEW
-                    </span>
-                  )}
-                </div>
-                <ul className="mt-1 list-disc pl-4 text-slate-500">
-                  {(iss.errors || []).map((e: any, i: number) => (
-                    <li key={i}>
-                      [{e.severity}] {e.message}
-                    </li>
-                  ))}
-                  {(iss.anomalies || []).map((a: any, i: number) => (
-                    <li key={`a-${i}`}>[REVIEW] {a.message}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-            {issues.length === 0 && (
-              <div className="p-4 text-slate-500">No issues — all rows ready.</div>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              className="rounded-xl border-slate-200"
-              onClick={() => setStep("map")}
-            >
-              Fix mapping
-            </Button>
-            <Button
-              className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
-              onClick={async () => {
-                const prev = await lettersApi.preview(orgId(), batchId);
-                setPreview(prev);
-                setStep("generate");
-              }}
-              disabled={summary && summary.ready + summary.warning === 0}
-            >
-              Continue to generate
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {(step === "generate" || (step === "send" && !progress)) && preview && step === "generate" && (
-        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
-          <h2 className="text-sm font-semibold text-slate-900">Sample preview</h2>
-          <div className="grid gap-2 text-xs sm:grid-cols-3">
-            {(["first", "middle", "last"] as const).map((k) => (
-              <div key={k} className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
-                <div className="mb-1 font-semibold capitalize text-slate-700">{k}</div>
-                <pre className="whitespace-pre-wrap text-[10px] text-slate-500">
-                  {JSON.stringify(preview.samples[k].employeeData, null, 2)}
-                </pre>
-              </div>
-            ))}
-          </div>
-          <div>
-            <Label>PDF password mode</Label>
-            <select
-              className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-              value={passwordMode}
-              onChange={(e) => setPasswordMode(e.target.value)}
-            >
-              <option value="NONE">None</option>
-              <option value="FROM_COLUMN">From Excel PDF_Password</option>
-              <option value="EMPLOYEE_ID">Employee_ID</option>
-              <option value="LAST4_ID">Last 4 of Employee_ID</option>
-            </select>
-          </div>
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
-            <input
-              type="checkbox"
-              checked={approved}
-              onChange={(e) => setApproved(e.target.checked)}
-              className="size-4 rounded border-slate-300"
-            />
-            I reviewed a sample and approve generation
-          </label>
-          <Button
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
-            disabled={busy || !approved}
-            onClick={startGenerate}
-          >
-            Generate PDFs
-          </Button>
-          {progress && (
-            <div className="space-y-2">
-              <Progress value={pct} />
-              <p className="text-xs text-slate-500">
-                Generated {progress.generated} · pending {progress.pending} · failed{" "}
-                {progress.failed}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {step === "generate" && progress && (
-        <div className="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
-          <Progress value={pct} />
-          <p className="text-sm text-slate-600">
-            Generating… {progress.generated} done, {progress.pending} pending
-          </p>
-        </div>
-      )}
-
-      {step === "send" && (
-        <div className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:p-5">
-          {progress?.aiSummary && (
-            <div className="rounded-xl bg-indigo-50 px-3 py-2.5 text-sm text-indigo-900">
-              {progress.aiSummary}
-            </div>
-          )}
-          <div>
-            <Label>Mode</Label>
-            <select
-              className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-              value={sendMode}
-              onChange={(e) => setSendMode(e.target.value as any)}
-            >
-              <option value="GENERATE_ONLY">Generate only (no email)</option>
-              <option value="CREATE_DRAFTS">Create drafts (default)</option>
-              <option value="SEND_NOW">Send now</option>
-            </select>
-          </div>
-          {sendMode !== "GENERATE_ONLY" && (
-            <>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl border-slate-200"
-                  onClick={async () => {
-                    const { url } = await lettersApi.mailAuthorize("OUTLOOK");
-                    window.location.href = url;
-                  }}
-                >
-                  Connect Outlook
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl border-slate-200"
-                  onClick={async () => {
-                    const { url } = await lettersApi.mailAuthorize("GMAIL");
-                    window.location.href = url;
-                  }}
-                >
-                  Connect Gmail
-                </Button>
-              </div>
+          {step === "setup" && (
+            <div className="space-y-4 rounded-xl border border-slate-200 p-4">
               <div>
-                <Label>Mail account</Label>
+                <Label>Template</Label>
                 <select
-                  className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                  value={mailAccountId}
-                  onChange={(e) => setMailAccountId(e.target.value)}
+                  className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
                 >
-                  <option value="">Select…</option>
-                  {mailAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.provider} · {a.emailAddress}
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <Label>Subject</Label>
-                <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                <Label>Brand profile (optional)</Label>
+                <select
+                  className="mt-1 flex h-9 w-full rounded-md border bg-background px-3 text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  value={brandProfileId}
+                  onChange={(e) => setBrandProfileId(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </>
-          )}
-          {sendMode === "SEND_NOW" && (
-            <div>
-              <Label>
-                Confirm recipient count ({progress?.generated || preview?.eligibleCount || "?"})
-              </Label>
-              <Input
-                type="number"
-                value={confirmCount}
-                onChange={(e) => setConfirmCount(e.target.value ? Number(e.target.value) : "")}
-              />
+              <Button
+                className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                disabled={busy || !templateId}
+                onClick={createBatch}
+              >
+                Continue
+              </Button>
             </div>
           )}
-          <Button
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700"
-            disabled={busy}
-            onClick={doSend}
-          >
-            {sendMode === "SEND_NOW" ? "Confirm & send now" : "Continue"}
-          </Button>
-        </div>
-      )}
+
+          {step === "map" && batchId && (
+            <div className="space-y-4">
+              {headers.length > 0 && (
+                <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {sourceFileName || "Uploaded file"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {rowCount} rows · {mappedCount} of {headers.length} columns mapped
+                      {missingRequired.length > 0 && (
+                        <span className="text-rose-600">
+                          {" "}
+                          · still need {missingRequired.join(", ")}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                    disabled={busy || missingRequired.length > 0}
+                    onClick={applyMap}
+                  >
+                    Save mapping and validate
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-4 rounded-xl border border-slate-200 p-4">
+                <div>
+                  <Label>Upload Excel or CSV</Label>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Need a test file?{" "}
+                    <a
+                      href="/samples/letter-batch-sample.csv"
+                      download="letter-batch-sample.csv"
+                      className="font-semibold text-indigo-700 underline underline-offset-2"
+                    >
+                      Download sample Excel (CSV)
+                    </a>{" "}
+                    with 5 employees — then upload it here.
+                  </p>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="mt-2 block w-full text-sm text-slate-600 file:mr-3 file:rounded-xl file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                    onChange={onFileInput}
+                  />
+                </div>
+
+                {busy && headers.length === 0 && (
+                  <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <div className="h-3 w-1/3 animate-pulse rounded bg-slate-200" />
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-slate-200" />
+                    <div className="h-24 animate-pulse rounded-lg bg-slate-200" />
+                  </div>
+                )}
+
+                {aiNote && (
+                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{aiNote}</p>
+                )}
+
+                {headers.length > 0 && (
+                  <>
+                    {previewRows.length > 0 && mappedFields.length > 0 && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Live preview (first {previewRows.length} rows)
+                        </p>
+                        <div className="overflow-auto rounded-xl border border-slate-200">
+                          <table className="w-full min-w-[640px] text-left text-xs">
+                            <thead className="bg-slate-50">
+                              <tr>
+                                <th className="px-3 py-2.5 font-semibold text-slate-500">#</th>
+                                {mappedFields.map((m) => (
+                                  <th key={m.excel} className="px-3 py-2.5 font-semibold text-slate-600">
+                                    <span className="block text-[10px] font-normal text-slate-400">
+                                      {m.excel}
+                                    </span>
+                                    {m.field}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {previewRows.map((row, i) => (
+                                <tr key={i} className="border-t border-slate-100 [content-visibility:auto]">
+                                  <td className="px-3 py-2 text-slate-400">{i + 1}</td>
+                                  {mappedFields.map((m) => (
+                                    <td key={m.excel} className="max-w-[140px] truncate px-3 py-2 text-slate-700">
+                                      {row[m.excel] ?? ""}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="overflow-auto rounded-xl border border-slate-200">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-3 py-2.5 font-semibold text-slate-600">Excel column</th>
+                            <th className="px-3 py-2.5 font-semibold text-slate-600">Maps to</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {headers.map((h) => (
+                            <MappingRow
+                              key={h}
+                              header={h}
+                              value={mapping[h] || ""}
+                              source={mapSources[h] || ""}
+                              systemFields={systemFields}
+                              onChange={onMappingChange}
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+                {headers.length === 0 && !busy && (
+                  <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    Upload an .xlsx or .csv file to detect columns.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === "validate" && (
+            <div className="space-y-4">
+              {summary && (
+                <div className="grid grid-cols-3 gap-3">
+                  <Stat label="Ready" value={summary.ready} tone="emerald" />
+                  <Stat label="Warning" value={summary.warning} tone="amber" />
+                  <Stat label="Blocked" value={summary.blocked} tone="rose" />
+                </div>
+              )}
+              {causeLine && (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  {causeLine}
+                </p>
+              )}
+              <div className="max-h-80 overflow-auto rounded-xl border border-slate-200 bg-white text-xs">
+                {visibleGroups.map((g) => (
+                  <div
+                    key={`${g.code}-${g.severity}`}
+                    className="border-b border-slate-100 px-3 py-2.5 [content-visibility:auto]"
+                  >
+                    <div className="font-semibold text-slate-800">
+                      {g.label}
+                      <span
+                        className={cn(
+                          "ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                          g.severity === "BLOCKED"
+                            ? "bg-rose-500/15 text-rose-700"
+                            : g.severity === "REVIEW"
+                              ? "bg-violet-500/15 text-violet-700"
+                              : "bg-amber-500/15 text-amber-700"
+                        )}
+                      >
+                        {g.severity} · {g.rows.length} row{g.rows.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-slate-500">
+                      Rows {g.rows.slice(0, 12).join(", ")}
+                      {g.rows.length > 12 ? ` +${g.rows.length - 12} more` : ""}
+                    </p>
+                  </div>
+                ))}
+                {issueGroups.length > 50 && !showAllIssues && (
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2.5 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                    onClick={() => setShowAllIssues(true)}
+                  >
+                    Show more ({issueGroups.length - 50} more groups)
+                  </button>
+                )}
+                {issues.length === 0 && (
+                  <div className="p-4 text-slate-500">No issues — all rows ready.</div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  className="rounded-xl border-slate-200 transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                  onClick={() => setStep("map")}
+                >
+                  Fix mapping
+                </Button>
+                <Button
+                  className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                  onClick={async () => {
+                    const prev = await lettersApi.preview(orgId(), batchId);
+                    setPreview(prev);
+                    setStep("generate");
+                  }}
+                  disabled={summary && summary.ready + summary.warning === 0}
+                >
+                  Continue to generate
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {(step === "generate" || (step === "send" && !progress)) && preview && step === "generate" && (
+            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+              <h2 className="text-sm font-semibold text-slate-900">Sample preview</h2>
+              <div className="grid gap-2 text-xs sm:grid-cols-3">
+                {(["first", "middle", "last"] as const).map((k) => (
+                  <div key={k} className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+                    <div className="mb-1 font-semibold capitalize text-slate-700">{k}</div>
+                    <pre className="whitespace-pre-wrap text-[10px] text-slate-500">
+                      {JSON.stringify(preview.samples[k].employeeData, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <Label>PDF password mode</Label>
+                <select
+                  className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  value={passwordMode}
+                  onChange={(e) => setPasswordMode(e.target.value)}
+                >
+                  <option value="NONE">None</option>
+                  <option value="FROM_COLUMN">From Excel PDF_Password</option>
+                  <option value="EMPLOYEE_ID">Employee_ID</option>
+                  <option value="LAST4_ID">Last 4 of Employee_ID</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={approved}
+                  onChange={(e) => setApproved(e.target.checked)}
+                  className="size-4 rounded border-slate-300"
+                />
+                I reviewed a sample and approve generation
+              </label>
+              <Button
+                className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                disabled={busy || !approved}
+                onClick={startGenerate}
+              >
+                Generate PDFs
+              </Button>
+              {progress && (
+                <div className="space-y-2">
+                  <Progress value={pct} />
+                  <p className="text-xs text-slate-500">
+                    Generated {progress.generated} · pending {progress.pending} · failed{" "}
+                    {progress.failed}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === "generate" && progress && (
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+              <Progress value={pct} />
+              <p className="text-sm text-slate-600">
+                Generating… {progress.generated} done, {progress.pending} pending
+              </p>
+              <div className="h-2 animate-pulse rounded bg-slate-100" />
+            </div>
+          )}
+
+          {step === "send" && (
+            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+              {progress?.aiSummary && (
+                <div className="rounded-xl bg-indigo-50 px-3 py-2.5 text-sm text-indigo-900">
+                  {progress.aiSummary}
+                </div>
+              )}
+              <div>
+                <Label>Mode</Label>
+                <select
+                  className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  value={sendMode}
+                  onChange={(e) => setSendMode(e.target.value as any)}
+                  disabled={!canSend}
+                >
+                  <option value="GENERATE_ONLY">Generate only (no email)</option>
+                  {canSend && <option value="CREATE_DRAFTS">Create drafts (default)</option>}
+                  {canSend && <option value="SEND_NOW">Send now</option>}
+                </select>
+                {!canSend && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Free plan creates PDFs only — upgrade to email letters.
+                  </p>
+                )}
+              </div>
+              {sendMode !== "GENERATE_ONLY" && canSend && (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-slate-200"
+                      onClick={async () => {
+                        const { url } = await lettersApi.mailAuthorize("OUTLOOK");
+                        window.location.href = url;
+                      }}
+                    >
+                      Connect Outlook
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl border-slate-200"
+                      onClick={async () => {
+                        const { url } = await lettersApi.mailAuthorize("GMAIL");
+                        window.location.href = url;
+                      }}
+                    >
+                      Connect Gmail
+                    </Button>
+                  </div>
+                  <div>
+                    <Label>Mail account</Label>
+                    <select
+                      className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                      value={mailAccountId}
+                      onChange={(e) => setMailAccountId(e.target.value)}
+                    >
+                      <option value="">Select…</option>
+                      {mailAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.provider} · {a.emailAddress}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Subject</Label>
+                    <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                  </div>
+                </>
+              )}
+              {sendMode === "SEND_NOW" && canSend && (
+                <div>
+                  <Label>
+                    Confirm recipient count ({progress?.generated || preview?.eligibleCount || "?"})
+                  </Label>
+                  <Input
+                    type="number"
+                    value={confirmCount}
+                    onChange={(e) => setConfirmCount(e.target.value ? Number(e.target.value) : "")}
+                  />
+                </div>
+              )}
+              <Button
+                className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                disabled={busy}
+                onClick={doSend}
+              >
+                {sendMode === "SEND_NOW" && canSend ? "Confirm & send now" : "Continue"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -665,7 +942,7 @@ function Stat({
     rose: "border-rose-500/30 bg-rose-500/5 text-rose-700",
   };
   return (
-    <div className={`rounded-2xl border p-3 shadow-sm ${colors[tone]}`}>
+    <div className={`rounded-xl border p-3 shadow-sm ${colors[tone]}`}>
       <div className="text-2xl font-bold">{value}</div>
       <div className="text-xs font-medium opacity-80">{label}</div>
     </div>

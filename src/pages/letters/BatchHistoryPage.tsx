@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ArrowRight, Search } from "lucide-react";
-import { StudioPageHeader } from "@/components/letters/StudioPageHeader";
+import {
+  StudioPageHeader,
+  StudioPageBody,
+} from "@/components/letters/StudioPageHeader";
 
 function orgId() {
   return localStorage.getItem("letter_org_id") || "";
@@ -43,7 +46,7 @@ export default function BatchHistoryPage() {
         title="History"
         description="Reopen past batches, download reports, or search in plain language."
       />
-      <div className="space-y-4 p-4 sm:p-5">
+      <StudioPageBody>
         <div className="flex gap-2 rounded-xl border border-slate-200 p-2">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -126,7 +129,7 @@ export default function BatchHistoryPage() {
             <div className="px-4 py-10 text-center text-sm text-slate-500">No batches yet.</div>
           )}
         </div>
-      </div>
+      </StudioPageBody>
     </div>
   );
 }

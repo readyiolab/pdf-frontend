@@ -3,13 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Spinner } from "@/components/ui/spinner";
 import { ArrowRight, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   StudioPageHeader,
   StudioPrimaryButton,
+  StudioPageBody,
+  StudioSkeleton,
 } from "@/components/letters/StudioPageHeader";
 import {
   LETTER_STEP_META,
@@ -71,9 +72,10 @@ export default function LettersHub() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-sm text-slate-500">
-        <Spinner className="size-6 text-indigo-600" />
-        Preparing your workspace…
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 sm:p-5">
+        <StudioSkeleton className="h-8 w-48" />
+        <StudioSkeleton className="h-32 w-full max-w-xl" />
+        <p className="text-sm text-slate-500">Preparing your workspace…</p>
       </div>
     );
   }
@@ -91,7 +93,7 @@ export default function LettersHub() {
         }
       />
 
-      <div className="space-y-5 p-4 sm:p-5">
+      <StudioPageBody className="space-y-5">
         {isFree && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Free plan: up to 5 rows per batch, email sending disabled.{" "}
@@ -209,7 +211,7 @@ export default function LettersHub() {
             </div>
           )}
         </section>
-      </div>
+      </StudioPageBody>
     </div>
   );
 }

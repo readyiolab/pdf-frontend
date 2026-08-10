@@ -63,8 +63,8 @@ export default function TeamSettingsPage() {
         title="Team & retention"
         description="Invite colleagues and choose how long generated PDFs are kept."
       />
-      <div className="grid max-w-3xl gap-6 p-4 sm:grid-cols-2 sm:p-5">
-        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+      <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5">
+        <div className="space-y-3 rounded-xl border border-slate-200 p-4 transition-colors duration-150">
           <h2 className="text-sm font-semibold text-slate-900">Invite member</h2>
           <div>
             <Label>Email</Label>

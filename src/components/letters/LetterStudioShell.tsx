@@ -23,7 +23,7 @@ const NAV = [
 ] as const;
 
 /**
- * Full-viewport Letter Studio — left sidebar + edge-to-edge content.
+ * Full-viewport Letter Studio — hover-expanding left sidebar + edge-to-edge content.
  * Marketing page at /letters stays outside this shell.
  */
 export function LetterStudioShell() {
@@ -35,13 +35,18 @@ export function LetterStudioShell() {
 
   return (
     <div className="flex h-dvh min-h-0 w-full overflow-hidden bg-white text-slate-900">
-      {/* Desktop sidebar */}
-      <aside className="hidden w-[220px] shrink-0 flex-col border-r border-slate-200 bg-[#F8FAFC] md:flex">
+      {/* Desktop sidebar — collapsed by default, expands on hover */}
+      <aside
+        className={cn(
+          "group/sidebar hidden shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-[#F8FAFC]",
+          "w-[64px] transition-[width] duration-200 ease-out hover:w-[220px] focus-within:w-[220px] md:flex"
+        )}
+      >
         <div className="flex h-12 items-center gap-2.5 border-b border-slate-200/80 px-3">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
             <FileText className="size-3.5" />
           </span>
-          <p className="truncate font-heading text-sm font-bold tracking-tight">
+          <p className="truncate font-heading text-sm font-bold tracking-tight opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
             Letter Studio
           </p>
         </div>
@@ -53,17 +58,21 @@ export function LetterStudioShell() {
                 key={item.to}
                 to={item.to}
                 end={"end" in item ? item.end : false}
+                title={item.label}
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors",
+                    "inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors duration-150",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40",
                     isActive
                       ? "bg-indigo-50 text-indigo-800"
                       : "text-slate-600 hover:bg-white hover:text-slate-900"
                   )
                 }
               >
-                <Icon className="size-4 opacity-80" />
-                {item.label}
+                <Icon className="size-4 shrink-0 opacity-80" />
+                <span className="truncate opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+                  {item.label}
+                </span>
               </NavLink>
             );
           })}
@@ -73,10 +82,14 @@ export function LetterStudioShell() {
             type="button"
             variant="ghost"
             size="sm"
-            className="h-9 w-full justify-start rounded-lg text-xs text-slate-600"
+            title="Product overview"
+            className="h-9 w-full justify-start gap-2 rounded-lg px-2.5 text-xs text-slate-600 transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
             onClick={() => navigate("/letters")}
           >
-            Product overview
+            <FileText className="size-4 shrink-0 opacity-70" />
+            <span className="truncate opacity-0 transition-opacity duration-150 group-hover/sidebar:opacity-100 group-focus-within/sidebar:opacity-100">
+              Product overview
+            </span>
           </Button>
         </div>
       </aside>
@@ -98,7 +111,7 @@ export function LetterStudioShell() {
               type="button"
               variant="ghost"
               size="icon"
-              className="size-8 rounded-lg text-slate-500"
+              className="size-8 rounded-lg text-slate-500 transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
               aria-label="Close studio"
               onClick={() => navigate("/")}
             >
@@ -118,7 +131,8 @@ export function LetterStudioShell() {
                 end={"end" in item ? item.end : false}
                 className={({ isActive }) =>
                   cn(
-                    "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold",
+                    "inline-flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors duration-150",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40",
                     isActive
                       ? "bg-indigo-50 text-indigo-800"
                       : "text-slate-600 hover:bg-white"

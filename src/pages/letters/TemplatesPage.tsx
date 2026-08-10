@@ -5,7 +5,10 @@ import { LetterEditor } from "@/components/letters/LetterEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
+import {
+  StudioPageHeader,
+  StudioSkeleton,
+} from "@/components/letters/StudioPageHeader";
 import { toast } from "sonner";
 import { Loader2, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -336,8 +339,9 @@ export default function TemplatesPage() {
 
         <div className="relative min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
           {generating && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/85">
-              <Spinner className="size-8 text-indigo-600" />
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-white/85">
+              <StudioSkeleton className="h-10 w-10 rounded-full" />
+              <StudioSkeleton className="h-3 w-40" />
               <div className="text-center">
                 <p className="text-sm font-semibold text-slate-900">Generating letter…</p>
                 <p className="mt-0.5 text-xs text-slate-500">
