@@ -10,7 +10,6 @@ interface AuthContextType {
   googleLogin: (data: { credential: string }) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<User>;
-  guestSession: () => Promise<void>;
   resendVerification: () => Promise<void>;
   applyVerifiedSession: (data: { token: string; user: User }) => void;
 }
@@ -59,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .catch(() => undefined);
   }, []);
 
-  // Important: do NOT flip global `loading` during login/register/guest.
+  // Important: do NOT flip global `loading` during login/register.
   // That was painting a second full-page spinner over the auth modal.
 
   const login = useCallback(async (email: string, password: string) => {
@@ -87,10 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return data.user;
   }, []);
 
-  const guestSession = useCallback(async () => {
-    applySession(await apiService.guestLogin());
-  }, [applySession]);
-
   const resendVerification = useCallback(async () => {
     await apiService.resendVerification();
   }, []);
@@ -109,7 +104,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       googleLogin,
       logout,
       refreshProfile,
-      guestSession,
       resendVerification,
       applyVerifiedSession,
     }),
@@ -122,7 +116,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       googleLogin,
       logout,
       refreshProfile,
-      guestSession,
       resendVerification,
       applyVerifiedSession,
     ]

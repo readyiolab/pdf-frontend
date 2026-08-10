@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { Mail, Lock, User as UserIcon, AlertCircle, ArrowRight } from "lucide-react";
+import { Mail, Lock, User as UserIcon, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,7 @@ export function AuthForm({
   const [googleReady, setGoogleReady] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  const { login, register, googleLogin, guestSession } = useAuth();
+  const { login, register, googleLogin } = useAuth();
   const navigate = useNavigate();
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
@@ -155,20 +155,6 @@ export function AuthForm({
       }
 
       setError(msg);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGuestSignIn = async () => {
-    setIsLoading(true);
-    setError("");
-    try {
-      await guestSession();
-      toast.success("Continuing as guest");
-      finish();
-    } catch {
-      setError("Failed to create guest session.");
     } finally {
       setIsLoading(false);
     }
@@ -347,39 +333,25 @@ export function AuthForm({
         </Button>
       </form>
 
-      <div className="mt-4 border-t border-border pt-4 text-center">
-        <button
-          type="button"
-          onClick={handleGuestSignIn}
-          disabled={isLoading}
-          className="inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <span>Continue as guest</span>
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Guests can use basic PDF tools. E-sign and AI need a verified account.
+      {!onSwitchMode && (
+        <p className="mt-4 border-t border-border pt-4 text-center text-xs text-muted-foreground">
+          {mode === "login" ? (
+            <>
+              No account?{" "}
+              <Link to="/register" className="font-semibold text-primary">
+                Sign up
+              </Link>
+            </>
+          ) : (
+            <>
+              Already have an account?{" "}
+              <Link to="/login" className="font-semibold text-primary">
+                Sign in
+              </Link>
+            </>
+          )}
         </p>
-        {!onSwitchMode && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            {mode === "login" ? (
-              <>
-                No account?{" "}
-                <Link to="/register" className="font-semibold text-primary">
-                  Sign up
-                </Link>
-              </>
-            ) : (
-              <>
-                Already have an account?{" "}
-                <Link to="/login" className="font-semibold text-primary">
-                  Sign in
-                </Link>
-              </>
-            )}
-          </p>
-        )}
-      </div>
+      )}
     </div>
   );
 }

@@ -61,7 +61,7 @@ export function VerifiedRoute({ children }: { children: React.ReactNode }) {
       <div className="mx-auto flex max-w-md flex-col items-center gap-4 px-4 py-16 text-center">
         <h1 className="text-xl font-semibold">Create a free account</h1>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Guest sessions can use basic PDF tools. E-sign and AI need a real account.
+          E-sign and AI need a signed-in account. Create one free to continue.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-2">
           <Button asChild>

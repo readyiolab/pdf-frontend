@@ -135,8 +135,6 @@ export const apiService = {
   googleLogin: (data: { credential: string }) =>
     apiFetch("/auth/google", { method: "POST", body: JSON.stringify(data) }),
 
-  guestLogin: () => apiFetch("/auth/guest", { method: "POST" }),
-
   logout: () => apiFetch("/auth/logout", { method: "POST" }),
 
   verifyEmail: (token: string) =>
