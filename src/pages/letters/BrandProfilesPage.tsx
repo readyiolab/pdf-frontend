@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,13 +7,15 @@ import { toast } from "sonner";
 import { apiService } from "@/services/api";
 import { StudioPageHeader } from "@/components/letters/StudioPageHeader";
 import { ImageIcon, Trash2 } from "lucide-react";
-
-function orgId() {
-  return localStorage.getItem("letter_org_id") || "";
-}
+import { useAuth } from "@/features/auth/useAuth";
+import { useBrands, useCreateBrand } from "@/features/letters";
 
 export default function BrandProfilesPage() {
-  const [brands, setBrands] = useState<any[]>([]);
+  const { user } = useAuth();
+  const brandsQuery = useBrands(user?.id);
+  const createBrand = useCreateBrand(user?.id);
+  const brands = brandsQuery.data?.brands ?? [];
+
   const [form, setForm] = useState({
     name: "Default brand",
     signatoryName: "",
@@ -26,23 +27,15 @@ export default function BrandProfilesPage() {
   });
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [letterheadPreview, setLetterheadPreview] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<"logo" | "letterhead" | null>(null);
 
-  const reload = async () => {
-    let id = orgId();
-    if (!id) {
-      const boot = await lettersApi.bootstrap();
-      id = boot.org.organization.id;
-      localStorage.setItem("letter_org_id", id);
-    }
-    const { brands: list } = await lettersApi.listBrands(id);
-    setBrands(list);
-  };
-
   useEffect(() => {
-    reload().catch((e) => toast.error(e.message));
-  }, []);
+    if (brandsQuery.error) {
+      toast.error(
+        brandsQuery.error instanceof Error ? brandsQuery.error.message : "Failed to load brands"
+      );
+    }
+  }, [brandsQuery.error]);
 
   useEffect(() => {
     return () => {
@@ -118,18 +111,16 @@ export default function BrandProfilesPage() {
   };
 
   const save = async () => {
-    setSaving(true);
     try {
-      await lettersApi.createBrand(orgId(), form);
+      await createBrand.mutateAsync(form);
       toast.success("Brand profile saved");
       resetForm();
-      await reload();
     } catch (e: any) {
       toast.error(e.message);
-    } finally {
-      setSaving(false);
     }
   };
+
+  const saving = createBrand.isPending;
 
   return (
     <div className="flex min-h-full flex-col">

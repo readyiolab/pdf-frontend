@@ -12,9 +12,10 @@ import {
   markLetterOnboardingDone,
   shouldShowLetterOnboarding,
 } from "@/lib/letterOnboarding";
+import { readLetterOrgId, writeLetterOrgId } from "@/features/letters/orgHelpers";
 
 function orgId() {
-  return localStorage.getItem("letter_org_id") || "";
+  return readLetterOrgId();
 }
 
 const STEPS = [
@@ -47,7 +48,10 @@ export function LetterOnboardingWizard() {
       try {
         const boot = await lettersApi.bootstrap();
         const id = boot.org.organization.id;
-        localStorage.setItem("letter_org_id", id);
+        writeLetterOrgId(id, {
+          role: boot.org.role,
+          orgName: boot.org.organization.name,
+        });
         const [brands, tpls] = await Promise.all([
           lettersApi.listBrands(id).catch(() => ({ brands: [] as any[] })),
           lettersApi.listTemplates(id).catch(() => ({ templates: [] as any[] })),

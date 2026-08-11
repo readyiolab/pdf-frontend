@@ -1,10 +1,10 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { lettersApi } from "@/services/lettersApi";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ArrowRight, Check } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/features/auth/useAuth";
+import { useLetterStudioHome } from "@/features/letters";
 import { cn } from "@/lib/utils";
 import {
   StudioPageHeader,
@@ -20,36 +20,27 @@ import {
 export default function LettersHub() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [orgName, setOrgName] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [batches, setBatches] = useState<any[]>([]);
-  const [brandCount, setBrandCount] = useState(0);
-  const [templateCount, setTemplateCount] = useState(0);
+  const homeQuery = useLetterStudioHome(user?.id);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const boot = await lettersApi.bootstrap();
-        const id = boot.org.organization.id;
-        setOrgName(boot.org.organization.name);
-        localStorage.setItem("letter_org_id", id);
-        if (boot.warning) toast.message(boot.warning);
+    if (homeQuery.data?.warning) toast.message(homeQuery.data.warning);
+  }, [homeQuery.data?.warning]);
 
-        const [batchRes, brandRes, templateRes] = await Promise.all([
-          lettersApi.listBatches(id),
-          lettersApi.listBrands(id).catch(() => ({ brands: [] as any[] })),
-          lettersApi.listTemplates(id).catch(() => ({ templates: [] as any[] })),
-        ]);
-        setBatches(batchRes.batches.slice(0, 8));
-        setBrandCount(brandRes.brands?.length || 0);
-        setTemplateCount(templateRes.templates?.length || 0);
-      } catch (err: any) {
-        toast.error(err.message || "Failed to open Letter Studio");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  useEffect(() => {
+    if (homeQuery.error) {
+      toast.error(
+        homeQuery.error instanceof Error
+          ? homeQuery.error.message
+          : "Failed to open Letter Studio"
+      );
+    }
+  }, [homeQuery.error]);
+
+  const orgName = homeQuery.data?.orgName ?? "";
+  const loading = homeQuery.isLoading;
+  const batches = homeQuery.data?.batches?.slice(0, 8) ?? [];
+  const brandCount = homeQuery.data?.brandCount ?? 0;
+  const templateCount = homeQuery.data?.templateCount ?? 0;
 
   const activeStep = useMemo(
     () =>
@@ -75,7 +66,7 @@ export default function LettersHub() {
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 sm:p-5">
         <StudioSkeleton className="h-8 w-48" />
         <StudioSkeleton className="h-32 w-full max-w-xl" />
-        <p className="text-sm text-slate-500">Preparing your workspace…</p>
+        <p className="text-sm text-slate-500">Preparing your workspace.</p>
       </div>
     );
   }
@@ -84,7 +75,7 @@ export default function LettersHub() {
     <div className="flex min-h-full flex-col">
       <StudioPageHeader
         title={orgName || "Your organization"}
-        description="Follow the highlighted step — we’ll point you to what to do next."
+        description="Follow the highlighted step - we'll point you to what to do next."
         action={
           <StudioPrimaryButton onClick={() => navigate(current.to)}>
             Continue: {current.short}
@@ -113,7 +104,7 @@ export default function LettersHub() {
           <ol className="grid md:grid-cols-3">
             {LETTER_STEP_META.map((step, idx) => {
               const isActive = step.n === activeStep;
-              const isDone = done[step.n];
+              const isDone = done[step.n as 1 | 2 | 3];
               return (
                 <li
                   key={step.n}
@@ -190,24 +181,32 @@ export default function LettersHub() {
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {batches.map((b) => (
-                <Link
-                  key={b.id}
-                  to={`/letters/batches/${b.id}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm transition hover:bg-slate-50"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-slate-900">
-                      {b.templateName || "Batch"}
+              {batches.map(
+                (b: {
+                  id: string;
+                  templateName?: string;
+                  totalRows?: number;
+                  status?: string;
+                  createdAt: string;
+                }) => (
+                  <Link
+                    key={b.id}
+                    to={`/letters/batches/${b.id}`}
+                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm transition hover:bg-slate-50"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-slate-900">
+                        {b.templateName || "Batch"}
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {b.totalRows} rows · {b.status} ·{" "}
+                        {new Date(b.createdAt).toLocaleString()}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      {b.totalRows} rows · {b.status} ·{" "}
-                      {new Date(b.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                  <ArrowRight className="size-4 shrink-0 text-slate-400" />
-                </Link>
-              ))}
+                    <ArrowRight className="size-4 shrink-0 text-slate-400" />
+                  </Link>
+                )
+              )}
             </div>
           )}
         </section>

@@ -156,15 +156,18 @@ function applyToolModeToGraph(
 ) {
   const drawing = mode === "pen" || mode === "brush" || mode === "eraser";
   const connecting = mode === "connector" || mode === "arrow";
-  const panning = mode === "pan" || (!drawing && !connecting && mode !== "shape-place");
-  graph.setPanning(panning || mode === "pan");
-  const connectable = !opts.readOnly && (connecting || mode === "select");
-  graph.setConnectable(connectable && !drawing && mode !== "pan" && mode !== "shape-place");
+  const isPan = mode === "pan";
+  const isShapePlace = mode === "shape-place";
+  const panning = isPan || (!drawing && !connecting && !isShapePlace);
+  graph.setPanning(panning);
+  const connectable =
+    !opts.readOnly && !drawing && !isPan && !isShapePlace && (connecting || mode === "select");
+  graph.setConnectable(connectable);
   const ch = graph.getPlugin("ConnectionHandler") as { setEnabled?: (v: boolean) => void } | null;
-  ch?.setEnabled?.(connectable && !drawing && mode !== "pan" && mode !== "shape-place");
+  ch?.setEnabled?.(connectable);
   if (opts.host) {
-    if (drawing || mode === "shape-place") opts.host.style.cursor = "crosshair";
-    else if (mode === "pan") opts.host.style.cursor = "grab";
+    if (drawing || isShapePlace) opts.host.style.cursor = "crosshair";
+    else if (isPan) opts.host.style.cursor = "grab";
     else if (connecting) opts.host.style.cursor = "crosshair";
     else opts.host.style.cursor = "";
   }

@@ -22,7 +22,6 @@ import { VersionHistoryPanel } from "@/components/diagrams/VersionHistoryPanel";
 import { PresentBar } from "@/components/diagrams/PresentBar";
 import {
   DiagramToolsProvider,
-  useDiagramTools,
   isTypingTarget,
 } from "@/components/diagrams/DiagramToolsContext";
 import { ShareDialog } from "@/components/diagrams/ShareDialog";
@@ -49,13 +48,15 @@ import {
   toSql,
   toTerraform,
 } from "@/lib/diagram/codegen";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/features/auth/useAuth";
 import {
   diagramsApi,
-  withDiagramOrgRetry,
+  useDiagramDocument,
+  useSyncDiagramTools,
+  withOrgRetry,
   type DiagramIssue,
   type ExplainStep,
-} from "@/services/diagramsApi";
+} from "@/features/diagrams";
 import type { CellStyle } from "@maxgraph/core";
 
 type SidePanel = "none" | "analyze" | "versions" | "explain";
@@ -65,21 +66,35 @@ function DiagramEditorInner() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const tools = useDiagramTools();
-  const isNew = !routeId || routeId === "new";
 
   const canvasRef = useRef<DiagramCanvasHandle>(null);
-  const [orgId, setOrgId] = useState<string | null>(null);
-  const [diagramId, setDiagramId] = useState<string | null>(isNew ? null : routeId!);
-  const [title, setTitle] = useState("Untitled Diagram");
-  const [doc, setDoc] = useState<DiagramDocument>(() => emptyDocument());
-  const [activePageId, setActivePageId] = useState(() => emptyDocument().pages[0]!.id);
-  const [dirty, setDirty] = useState(false);
+  const tools = useSyncDiagramTools(canvasRef);
+  const docState = useDiagramDocument({ routeId, userId: user?.id });
+  const {
+    orgId,
+    setOrgId,
+    diagramId,
+    title,
+    setTitle,
+    doc,
+    setDoc,
+    activePageId,
+    setActivePageId,
+    dirty,
+    setDirty,
+    markDirty,
+    currentVersion,
+    setCurrentVersion,
+    loading,
+    error,
+    setError,
+    membershipHint,
+    setMembershipHint,
+    retryLoad,
+  } = docState;
+
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [loading, setLoading] = useState(!isNew);
-  const [error, setError] = useState<string | null>(null);
-  const [membershipHint, setMembershipHint] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [selBounds, setSelBounds] = useState<{ x: number; y: number; w: number; h: number } | null>(
@@ -98,7 +113,6 @@ function DiagramEditorInner() {
   const [presentSpeed, setPresentSpeed] = useState(1);
   const [lastLayout, setLastLayout] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
-  const [currentVersion, setCurrentVersion] = useState<number | null>(null);
   const [fillColor, setFillColor] = useState("#dae8fc");
   const [strokeColor, setStrokeColor] = useState("#6c8ebf");
   const loadedRef = useRef(false);
@@ -112,39 +126,6 @@ function DiagramEditorInner() {
 
   const aiOpen = tools.aiOpen;
   const setAiOpen = tools.setAiOpen;
-
-  const markDirty = useCallback(() => setDirty(true), []);
-
-  // Sync tool mode + pen style into canvas
-  useEffect(() => {
-    const tool = tools.activeTool;
-    let mode: "select" | "pan" | "pen" | "brush" | "eraser" | "connector" | "arrow" | "shape-place" =
-      "select";
-    if (tool === "pencil") mode = "pen";
-    else if (tool === "marker") mode = "brush";
-    else if (
-      tool === "pen" ||
-      tool === "brush" ||
-      tool === "eraser" ||
-      tool === "connector" ||
-      tool === "arrow" ||
-      tool === "pan" ||
-      tool === "shape-place"
-    ) {
-      mode = tool;
-    }
-    canvasRef.current?.setToolMode(mode);
-    canvasRef.current?.setPendingShape(tools.pendingShape);
-    if (tool === "pen" || tool === "pencil") {
-      canvasRef.current?.setPenStyle({ ...tools.pen, brush: "pen" });
-    } else if (tool === "brush" || tool === "marker") {
-      canvasRef.current?.setPenStyle({ ...tools.brush, brush: "brush" });
-    }
-  }, [tools.activeTool, tools.pen, tools.brush, tools.pendingShape]);
-
-  useEffect(() => {
-    canvasRef.current?.setDefaultEdgeStyle(tools.connectorStyle);
-  }, [tools.connectorStyle]);
 
   useEffect(() => {
     const onInsertText = () => {
@@ -161,61 +142,7 @@ function DiagramEditorInner() {
     };
     window.addEventListener("diagram-tool-insert-text", onInsertText);
     return () => window.removeEventListener("diagram-tool-insert-text", onInsertText);
-  }, []);
-
-  // Bootstrap + load
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setError(null);
-        setMembershipHint(false);
-        if (isNew) {
-          const { orgId: oid, result } = await withDiagramOrgRetry(user?.id, (id) =>
-            diagramsApi.create(id, { title: "Untitled Diagram" })
-          );
-          if (cancelled) return;
-          setOrgId(oid);
-          setDiagramId(result.diagram.id);
-          navigate(`/diagrams/${result.diagram.id}`, { replace: true });
-          const content = upgradeDocument(result.diagram.content ?? emptyDocument());
-          setDoc(content);
-          setActivePageId(content.pages[0]!.id);
-          setTitle(result.diagram.title);
-          setCurrentVersion(result.diagram.currentVersion ?? null);
-          setLoading(false);
-          return;
-        }
-
-        setLoading(true);
-        const { orgId: oid, result } = await withDiagramOrgRetry(user?.id, (id) =>
-          diagramsApi.get(id, routeId!)
-        );
-        if (cancelled) return;
-        setOrgId(oid);
-        const content = upgradeDocument(result.diagram.content ?? emptyDocument());
-        setDoc(content);
-        setActivePageId(content.pages[0]!.id);
-        setTitle(result.diagram.title);
-        setDiagramId(result.diagram.id);
-        setCurrentVersion(result.diagram.currentVersion ?? null);
-        setDirty(false);
-      } catch (e: unknown) {
-        if (cancelled) return;
-        const msg = e instanceof Error ? e.message : "Failed to load diagram";
-        setError(msg);
-        if (/not a member of this organization/i.test(msg)) {
-          setMembershipHint(true);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeId, user?.id]);
+  }, [setDirty]);
 
   // Load page into canvas when ready
   useEffect(() => {
@@ -269,7 +196,7 @@ function DiagramEditorInner() {
     try {
       const nextDoc = syncActivePageFromCanvas();
       setDoc(nextDoc);
-      const { result } = await withDiagramOrgRetry(user?.id, (id) =>
+      const { result } = await withOrgRetry(user?.id, (id) =>
         diagramsApi.update(id, diagramId, { title, content: nextDoc })
       );
       setOrgId(result.diagram.organizationId || orgId);
@@ -1158,32 +1085,7 @@ function DiagramEditorInner() {
             <button
               type="button"
               className="ml-2 underline"
-              onClick={() => {
-                setError(null);
-                setMembershipHint(false);
-                setLoading(true);
-                // re-trigger load by remounting route effect via soft reload of org
-                void (async () => {
-                  try {
-                    const { orgId: oid, result } = await withDiagramOrgRetry(user?.id, (id) =>
-                      isNew
-                        ? Promise.resolve({ diagram: { id: diagramId!, content: doc, title, currentVersion: currentVersion ?? 1, organizationId: id } as never })
-                        : diagramsApi.get(id, routeId!)
-                    );
-                    setOrgId(oid);
-                    if (!isNew && result.diagram) {
-                      const content = upgradeDocument(result.diagram.content ?? emptyDocument());
-                      setDoc(content);
-                      setActivePageId(content.pages[0]!.id);
-                      setTitle(result.diagram.title);
-                    }
-                  } catch (e: unknown) {
-                    setError(e instanceof Error ? e.message : "Retry failed");
-                  } finally {
-                    setLoading(false);
-                  }
-                })();
-              }}
+              onClick={() => void retryLoad()}
             >
               Retry with your organization
             </button>

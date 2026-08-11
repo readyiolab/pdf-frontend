@@ -1,10 +1,13 @@
 import { apiFetch, ApiError } from "./api";
 import type { DiagramDocument, DiagramPage } from "@/lib/diagram/model";
-import { lettersApi } from "./lettersApi";
+import {
+  clearOrgId,
+  ensureOrg,
+  getOrgId,
+  setOrgId,
+} from "@/features/org";
 
 const ORG_HEADER = "X-Organization-Id";
-const ORG_KEY = "letter_org_id";
-const ORG_USER_KEY = "letter_org_user_id";
 const AI_TIMEOUT_MS = 90_000;
 
 function orgHeaders(organizationId?: string | null): HeadersInit {
@@ -12,23 +15,19 @@ function orgHeaders(organizationId?: string | null): HeadersInit {
   return { [ORG_HEADER]: organizationId };
 }
 
-/** Read org id only if it belongs to the current user (prevents cross-account leak). */
+/** @deprecated Use getOrgId from @/features/org */
 export function getDiagramOrgId(userId?: string | null): string | null {
-  const storedUser = localStorage.getItem(ORG_USER_KEY);
-  const orgId = localStorage.getItem(ORG_KEY);
-  if (!orgId) return null;
-  if (userId && storedUser && storedUser !== userId) return null;
-  return orgId;
+  return getOrgId(userId);
 }
 
+/** @deprecated Use setOrgId from @/features/org */
 export function setDiagramOrgId(id: string, userId?: string | null) {
-  localStorage.setItem(ORG_KEY, id);
-  if (userId) localStorage.setItem(ORG_USER_KEY, userId);
+  setOrgId(id, { userId });
 }
 
+/** @deprecated Use clearOrgId from @/features/org */
 export function clearDiagramOrgId() {
-  localStorage.removeItem(ORG_KEY);
-  localStorage.removeItem(ORG_USER_KEY);
+  clearOrgId();
 }
 
 function isMembershipError(err: unknown): boolean {
@@ -36,28 +35,23 @@ function isMembershipError(err: unknown): boolean {
   return /not a member of this organization/i.test(err.message);
 }
 
-/** Bootstrap (or re-bootstrap) the active org for the current user. */
+/** @deprecated Use ensureOrg from @/features/org */
 export async function ensureDiagramOrg(userId?: string | null): Promise<string> {
-  let oid = getDiagramOrgId(userId);
-  if (oid) return oid;
-  const boot = await lettersApi.bootstrap();
-  oid = boot.org.organization.id as string;
-  setDiagramOrgId(oid, userId);
-  return oid;
+  return ensureOrg(userId);
 }
 
-/** Run an org-scoped call; on stale-org 403, clear + re-bootstrap and retry once. */
+/** @deprecated Use withOrgRetry from @/features/diagrams */
 export async function withDiagramOrgRetry<T>(
   userId: string | null | undefined,
   run: (orgId: string) => Promise<T>
 ): Promise<{ orgId: string; result: T }> {
-  let orgId = await ensureDiagramOrg(userId);
+  let orgId = await ensureOrg(userId);
   try {
     return { orgId, result: await run(orgId) };
   } catch (err) {
     if (!isMembershipError(err)) throw err;
-    clearDiagramOrgId();
-    orgId = await ensureDiagramOrg(userId);
+    clearOrgId();
+    orgId = await ensureOrg(userId);
     return { orgId, result: await run(orgId) };
   }
 }

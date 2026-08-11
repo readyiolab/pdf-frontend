@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
 import { toast } from "sonner";
+import { writeLetterOrgId } from "@/features/letters/orgHelpers";
 
 /** Accepts ?token= from invite email. */
 export default function AcceptInvitePage() {
@@ -18,7 +19,10 @@ export default function AcceptInvitePage() {
     lettersApi
       .acceptInvite(token)
       .then((res) => {
-        localStorage.setItem("letter_org_id", res.organization.id);
+        writeLetterOrgId(res.organization.id, {
+          role: res.role,
+          orgName: res.organization.name,
+        });
         toast.success(`Joined ${res.organization.name}`);
         navigate("/letters/studio");
       })

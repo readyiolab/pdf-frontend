@@ -15,9 +15,13 @@ import {
   fillPreviewTokens,
   SAMPLE_EMPLOYEE,
 } from "@/lib/tipTapLetter";
+import { useAuth } from "@/features/auth/useAuth";
+import { useBrands, useTemplates } from "@/features/letters";
+import { ensureOrg } from "@/features/org";
+import { readLetterOrgId } from "@/features/letters/orgHelpers";
 
 function orgId() {
-  return localStorage.getItem("letter_org_id") || "";
+  return readLetterOrgId();
 }
 
 const TYPES = [
@@ -40,8 +44,11 @@ const FONT_STACK: Record<string, string> = {
 export default function TemplatesPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [brands, setBrands] = useState<any[]>([]);
+  const { user } = useAuth();
+  const templatesQuery = useTemplates(user?.id);
+  const brandsQuery = useBrands(user?.id);
+  const templates = templatesQuery.data?.templates ?? [];
+  const brands = brandsQuery.data?.brands ?? [];
   const [previewBrandId, setPreviewBrandId] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [name, setName] = useState("Salary Increment Letter");
@@ -65,7 +72,7 @@ export default function TemplatesPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   const previewBrand = useMemo(
-    () => brands.find((b) => b.id === previewBrandId) || null,
+    () => brands.find((b: { id: string }) => b.id === previewBrandId) || null,
     [brands, previewBrandId]
   );
 
@@ -74,38 +81,44 @@ export default function TemplatesPage() {
     return fillPreviewTokens(plain, SAMPLE_EMPLOYEE);
   }, [content]);
 
-  const reload = async () => {
-    if (!orgId()) {
-      const boot = await lettersApi.bootstrap();
-      localStorage.setItem("letter_org_id", boot.org.organization.id);
-    }
-    let [{ templates: list }, { brands: brandList }] = await Promise.all([
-      lettersApi.listTemplates(orgId()),
-      lettersApi.listBrands(orgId()),
-    ]);
-    if (!list.length) {
-      const seeded = await lettersApi.seedTemplates(orgId());
-      list = seeded.templates;
-    }
-    setTemplates(list);
-    setBrands(brandList);
-    if (!previewBrandId && brandList[0]) setPreviewBrandId(brandList[0].id);
-    if (!selectedId && list[0]) openTemplate(list[0]);
-  };
-
   const openTemplate = (t: any) => {
     setSelectedId(t.id);
     setName(t.name);
     setType(t.type);
     setContent(t.contentJson);
     setEditorKey((k) => k + 1);
-    setPolishPreview(null);
-    setPolishContentJson(null);
   };
 
   useEffect(() => {
-    reload().catch((e) => toast.error(e.message));
-  }, []);
+    if (!previewBrandId && brands[0]) setPreviewBrandId(brands[0].id);
+  }, [brands, previewBrandId]);
+
+  useEffect(() => {
+    if (!selectedId && templates[0]) openTemplate(templates[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates]);
+
+  useEffect(() => {
+    const err = templatesQuery.error || brandsQuery.error;
+    if (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load templates");
+    }
+  }, [templatesQuery.error, brandsQuery.error]);
+
+  const reload = async () => {
+    await ensureOrg(user?.id);
+    await Promise.all([templatesQuery.refetch(), brandsQuery.refetch()]);
+  };
+
+  useEffect(() => {
+    // Query hooks load data; this only handles deep-link templateId once templates arrive
+    const tid = params.get("templateId");
+    if (tid && templates.length) {
+      const found = templates.find((t: { id: string }) => t.id === tid);
+      if (found) openTemplate(found);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, templates]);
 
   useEffect(() => {
     if (params.get("ai") === "1") setAiOpen(true);
@@ -225,7 +238,7 @@ export default function TemplatesPage() {
     setRefreshing(true);
     try {
       const res = await lettersApi.refreshStarterTemplates(orgId(), overwrite);
-      setTemplates(res.templates);
+      await templatesQuery.refetch();
       toast.success(
         overwrite
           ? `Updated ${res.refreshed} starter(s)`

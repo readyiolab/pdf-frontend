@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { StudioPageHeader } from "@/components/letters/StudioPageHeader";
+import { ensureLetterOrgId, readLetterOrgId, writeLetterOrgId } from "@/features/letters/orgHelpers";
 
 function orgId() {
-  return localStorage.getItem("letter_org_id") || "";
+  return readLetterOrgId();
 }
 
 export default function TeamSettingsPage() {
@@ -25,7 +26,10 @@ export default function TeamSettingsPage() {
       lettersApi
         .acceptInvite(token)
         .then((res) => {
-          localStorage.setItem("letter_org_id", res.organization.id);
+          writeLetterOrgId(res.organization.id, {
+            role: res.role,
+            orgName: res.organization.name,
+          });
           toast.success(`Joined ${res.organization.name} as ${res.role}`);
           navigate("/letters/studio");
         })
@@ -34,7 +38,7 @@ export default function TeamSettingsPage() {
   }, [params, navigate]);
 
   useEffect(() => {
-    lettersApi.bootstrap().catch(() => undefined);
+    void ensureLetterOrgId().catch(() => undefined);
   }, []);
 
   const invite = async () => {

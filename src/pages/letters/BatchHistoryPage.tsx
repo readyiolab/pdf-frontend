@@ -9,29 +9,35 @@ import {
   StudioPageHeader,
   StudioPageBody,
 } from "@/components/letters/StudioPageHeader";
+import { useAuth } from "@/features/auth/useAuth";
+import { useBatches } from "@/features/letters";
+import { ensureLetterOrgId, readLetterOrgId } from "@/features/letters/orgHelpers";
 
 function orgId() {
-  return localStorage.getItem("letter_org_id") || "";
+  return readLetterOrgId();
 }
 
 export default function BatchHistoryPage() {
-  const [batches, setBatches] = useState<any[]>([]);
+  const { user } = useAuth();
+  const batchesQuery = useBatches(user?.id);
+  const batches = batchesQuery.data?.batches ?? [];
   const [question, setQuestion] = useState("Show me employees whose letter failed to send");
   const [results, setResults] = useState<any[] | null>(null);
   const [asking, setAsking] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      if (!orgId()) await lettersApi.bootstrap();
-      const { batches: list } = await lettersApi.listBatches(orgId());
-      setBatches(list);
-    })().catch((e) => toast.error(e.message));
-  }, []);
+    if (batchesQuery.error) {
+      toast.error(
+        batchesQuery.error instanceof Error ? batchesQuery.error.message : "Failed to load batches"
+      );
+    }
+  }, [batchesQuery.error]);
 
   const runQuery = async () => {
     setAsking(true);
     try {
+      await ensureLetterOrgId(user?.id);
       const res = await lettersApi.aiQuery(orgId(), question);
       setResults(res.results);
     } catch (e: any) {
@@ -82,77 +88,75 @@ export default function BatchHistoryPage() {
           </div>
         )}
 
-        <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
-          {batches.map((b) => (
-            <div
-              key={b.id}
-              className="flex items-center justify-between gap-3 px-4 py-3.5 text-sm transition hover:bg-slate-50"
-            >
-              <Link to={`/letters/batches/${b.id}`} className="min-w-0 flex-1">
-                <div className="truncate font-semibold text-slate-900">
-                  {b.templateName || "Batch"}
-                </div>
-                <div className="mt-0.5 text-xs text-slate-500">
-                  {b.totalRows} rows · gen {b.generatedCount} · sent {b.sentCount} · {b.status}
-                  {b.templateVersion != null ? ` · template v${b.templateVersion}` : ""}
-                </div>
-                {b.aiSummary && (
-                  <div className="mt-1 text-xs text-slate-500">{b.aiSummary}</div>
-                )}
-              </Link>
-              <div className="flex shrink-0 items-center gap-1">
-                {Number(b.generatedCount) > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-lg text-xs"
-                    disabled={downloadingId === b.id}
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      setDownloadingId(b.id);
-                      try {
-                        await lettersApi.downloadPdfsZip(orgId(), b.id);
-                        toast.success("Downloading letter PDFs");
-                      } catch (err: any) {
-                        toast.error(err.message || "Download failed");
-                      } finally {
-                        setDownloadingId(null);
-                      }
-                    }}
-                  >
-                    <Download className="mr-1 size-3.5" />
-                    {downloadingId === b.id ? "…" : "Download PDFs"}
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 rounded-lg text-xs"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    const { report } = await lettersApi.report(orgId(), b.id);
-                    const blob = new Blob([JSON.stringify(report, null, 2)], {
-                      type: "application/json",
-                    });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `batch-${b.id}-status.json`;
-                    a.click();
-                  }}
-                >
-                  Status (JSON)
-                </Button>
-                <Link to={`/letters/batches/${b.id}`}>
-                  <ArrowRight className="size-4 text-slate-400" />
-                </Link>
-              </div>
-            </div>
-          ))}
-          {batches.length === 0 && (
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-900">
+            Batches
+          </div>
+          {batchesQuery.isLoading ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-500">Loading…</div>
+          ) : batches.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-slate-500">No batches yet.</div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {batches.map((b: any) => (
+                <div
+                  key={b.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
+                >
+                  <Link
+                    to={`/letters/batches/${b.id}`}
+                    className="min-w-0 flex-1 hover:text-indigo-700"
+                  >
+                    <div className="truncate font-medium text-slate-900">
+                      {b.templateName || "Batch"}
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {b.totalRows} rows · {b.status} · {new Date(b.createdAt).toLocaleString()}
+                    </div>
+                  </Link>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-lg"
+                      disabled={downloadingId === b.id}
+                      onClick={async () => {
+                        setDownloadingId(b.id);
+                        try {
+                          await ensureLetterOrgId(user?.id);
+                          await lettersApi.downloadPdfsZip(orgId(), b.id);
+                          toast.success("Download started");
+                        } catch (e: any) {
+                          toast.error(e.message);
+                        } finally {
+                          setDownloadingId(null);
+                        }
+                      }}
+                    >
+                      <Download className="mr-1 size-3.5" />
+                      PDFs
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 rounded-lg"
+                      onClick={async () => {
+                        try {
+                          await ensureLetterOrgId(user?.id);
+                          await lettersApi.report(orgId(), b.id);
+                          toast.message("Report ready");
+                        } catch (e: any) {
+                          toast.error(e.message);
+                        }
+                      }}
+                    >
+                      Report
+                      <ArrowRight className="ml-1 size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </StudioPageBody>

@@ -24,9 +24,10 @@ import {
   type MappingSource,
 } from "@/lib/letterMapping";
 import { cn } from "@/lib/utils";
+import { ensureLetterOrgId, readLetterOrgId, writeLetterOrgId } from "@/features/letters/orgHelpers";
 
 function orgId() {
-  return localStorage.getItem("letter_org_id") || "";
+  return readLetterOrgId();
 }
 
 type Step = "setup" | "map" | "validate" | "generate" | "send";
@@ -141,7 +142,13 @@ export default function BatchWizardPage() {
     (async () => {
       if (!orgId()) {
         const boot = await lettersApi.bootstrap();
-        localStorage.setItem("letter_org_id", boot.org.organization.id);
+        writeLetterOrgId(boot.org.organization.id, {
+          role: boot.org.role,
+          orgName: boot.org.organization.name,
+          userId: user?.id,
+        });
+      } else {
+        await ensureLetterOrgId(user?.id);
       }
       const [{ templates: t }, { brands: b }] = await Promise.all([
         lettersApi.listTemplates(orgId()),
