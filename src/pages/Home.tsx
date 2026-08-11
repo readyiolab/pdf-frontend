@@ -10,6 +10,7 @@ import {
   Cloud,
   FileSignature,
   FileText,
+  GitBranch,
   GitMerge,
   Hash,
   KeyRound,
@@ -36,6 +37,7 @@ import {
   DOWNLOAD_MAILTO,
 } from "@/components/desktop/motion";
 import { EsignStatusMock } from "@/components/esign/EsignStatusMock";
+import { ONLINE_PLANS } from "@/lib/pricing";
 
 const FAQS = [
   {
@@ -259,6 +261,17 @@ export const Home: React.FC = () => {
               >
                 <FileText className="h-3.5 w-3.5" />
                 Letters
+              </button>
+              <span className="text-slate-300" aria-hidden>
+                ·
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate("/diagrams")}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-violet-800 transition-colors hover:bg-violet-50"
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+                Diagrams
               </button>
               <span className="text-slate-300" aria-hidden>
                 ·
@@ -1049,17 +1062,18 @@ export const Home: React.FC = () => {
                 Desktop · Windows
               </p>
               <h2 className="font-heading mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                PDF Toolkit for your desktop
+                Desktop apps — PDF &amp; Diagrams
               </h2>
               <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-500 sm:text-lg">
-                All your PDF tools in one Windows app — fast, private, and offline-ready after
-                activation. Files stay on your PC.
+                Run PDF Toolkit and Diagram Studio on Windows — fast, private, and offline-ready
+                after activation. Files stay on your PC.
               </p>
               <ul className="mt-7 space-y-2.5">
                 {[
                   { icon: ShieldCheck, text: "Private local processing — no random cloud uploads" },
                   { icon: WifiOff, text: "Works offline once licensed" },
                   { icon: KeyRound, text: "Activate with a license key; team seats available" },
+                  { icon: GitBranch, text: "Diagram Studio desktop for offline draw.io-style work" },
                 ].map((row) => {
                   const Icon = row.icon;
                   return (
@@ -1090,6 +1104,14 @@ export const Home: React.FC = () => {
                 >
                   <a href={DOWNLOAD_MAILTO}>Download for Windows</a>
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  className="h-12 cursor-pointer rounded-full px-5 text-sm font-semibold text-slate-600"
+                  onClick={() => navigate("/diagrams")}
+                >
+                  Diagram Studio online
+                </Button>
               </div>
             </motion.div>
 
@@ -1115,34 +1137,9 @@ export const Home: React.FC = () => {
           </p>
 
           <div className="mx-auto mt-14 grid max-w-4xl gap-5 text-left sm:grid-cols-3">
-            {[
-              {
-                name: "Free",
-                price: "$0",
-                blurb: "Core tools & light AI usage",
-                cta: "Get started",
-                path: "/workspace",
-                featured: false,
-              },
-              {
-                name: "Pro",
-                price: "$12",
-                blurb: "Unlimited tools, eSign & AI credits",
-                cta: "Upgrade",
-                path: "/billing",
-                featured: true,
-              },
-              {
-                name: "Enterprise",
-                price: "Custom",
-                blurb: "Your own cloud storage, SLA & dedicated support",
-                cta: "Learn more",
-                path: "/enterprise",
-                featured: false,
-              },
-            ].map((plan) => (
+            {ONLINE_PLANS.map((plan) => (
               <div
-                key={plan.name}
+                key={plan.id}
                 className={cn(
                   "relative flex flex-col rounded-3xl border p-6 transition-transform hover:-translate-y-0.5",
                   plan.featured
@@ -1165,14 +1162,14 @@ export const Home: React.FC = () => {
                 </p>
                 <p className="mt-3 text-4xl font-bold tracking-tight">
                   {plan.price}
-                  {plan.price.startsWith("$") && plan.price !== "$0" && (
+                  {plan.period && (
                     <span
                       className={cn(
                         "text-sm font-normal",
                         plan.featured ? "text-slate-400" : "text-slate-400"
                       )}
                     >
-                      /mo
+                      /{plan.period}
                     </span>
                   )}
                 </p>
@@ -1201,7 +1198,7 @@ export const Home: React.FC = () => {
           </div>
 
           <Link
-            to="/billing"
+            to="/billing#compare"
             className="mt-10 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
           >
             Compare all plans

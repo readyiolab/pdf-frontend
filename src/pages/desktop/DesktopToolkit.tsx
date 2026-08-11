@@ -26,9 +26,10 @@ import {
 } from "@/components/desktop/motion";
 
 const HERO_CHECKS = [
+  "PDF tools + Diagram Studio",
   "Files stay on your PC",
   "Works offline after activation",
-  "Windows desktop app",
+  "Windows desktop apps",
 ] as const;
 
 const WHY = [
@@ -92,6 +93,16 @@ const FEATURE_GROUPS = [
       "Extract text",
     ],
   },
+  {
+    title: "Diagram Studio",
+    items: [
+      "Draw.io-style canvas",
+      "Shape libraries & connectors",
+      "Multi-page diagrams",
+      "Export PNG / SVG / PDF",
+      "Offline after license",
+    ],
+  },
 ] as const;
 
 const STEPS = [
@@ -103,7 +114,7 @@ const STEPS = [
   {
     n: "02",
     title: "Install",
-    body: "Run the setup once. PDF Toolkit lives on your desktop — no browser required.",
+    body: "Run the setup once. PDF Toolkit and Diagram Studio live on your desktop — no browser required.",
   },
   {
     n: "03",
@@ -113,7 +124,7 @@ const STEPS = [
   {
     n: "04",
     title: "Use your tools",
-    body: "Merge, protect, convert, and more — all offline after activation.",
+    body: "Merge, protect, convert, and diagram — all offline after activation.",
   },
 ] as const;
 
@@ -181,15 +192,18 @@ export default function DesktopToolkit() {
 
             <h1 className="font-heading mt-6 text-balance text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl sm:leading-[1.05] lg:text-[3.25rem] xl:text-[3.5rem]">
               PDF<span className="text-blue-600">Toolkit</span>
+              <span className="block text-2xl font-semibold tracking-tight text-slate-600 sm:text-3xl lg:text-[1.75rem]">
+                + Diagram Studio Desktop
+              </span>
             </h1>
 
             <p className="mt-4 max-w-xl text-balance text-xl font-medium tracking-tight text-slate-700 sm:text-2xl sm:leading-snug">
-              All your PDF tools in one desktop app
+              PDF tools and diagrams — offline on Windows
             </p>
 
             <p className="mt-4 max-w-lg text-pretty text-base leading-relaxed text-slate-500 sm:text-lg">
               Fast, private, and offline-ready. Install on Windows, activate with a license key,
-              and keep every file on your machine.
+              and keep every file and diagram on your machine.
             </p>
 
             <motion.div
@@ -344,15 +358,15 @@ export default function DesktopToolkit() {
               Features
             </p>
             <h2 className="font-heading text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Every tool in one app
+              Every tool in one place
             </h2>
             <p className="mt-3 text-base text-slate-500 sm:text-lg">
-              Organize, edit, protect, and convert — without leaving your desktop.
+              Organize, edit, protect, convert, and diagram — without leaving your desktop.
             </p>
           </div>
 
           <motion.div
-            className="mt-12 grid gap-8 lg:grid-cols-3"
+            className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4"
             initial="hidden"
             whileInView="visible"
             viewport={DESKTOP_VIEWPORT}
@@ -461,6 +475,13 @@ export default function DesktopToolkit() {
                   <ArrowRight className="ml-1.5 h-4 w-4" />
                 </a>
               </Button>
+              <p className="mt-4 text-sm text-slate-500">
+                Prefer the cloud?{" "}
+                <Link to="/billing" className="font-semibold text-blue-600 hover:text-blue-700">
+                  See online plans
+                </Link>{" "}
+                — Free, Pro $12/mo, Enterprise.
+              </p>
             </motion.div>
 
             <motion.div
@@ -543,7 +564,7 @@ export default function DesktopToolkit() {
               Get started
             </p>
             <h2 className="font-heading mt-3 text-balance text-3xl font-bold tracking-tight text-white sm:text-4xl sm:leading-[1.12]">
-              Ready for PDF Toolkit on Windows?
+              Ready for PDF &amp; Diagrams on Windows?
             </h2>
             <p className="mt-4 max-w-lg text-pretty text-base leading-relaxed text-slate-300 sm:text-lg">
               Request the installer or a license key. We reply from{" "}
@@ -553,7 +574,11 @@ export default function DesktopToolkit() {
               >
                 support@zuvigo.com
               </a>
-              — usually the same day.
+              — usually the same day. For cloud SaaS pricing,{" "}
+              <Link to="/billing" className="font-semibold text-sky-300 underline-offset-2 hover:underline">
+                see online plans
+              </Link>
+              .
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">

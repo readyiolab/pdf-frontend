@@ -7,14 +7,18 @@ import {
   Download,
   GitBranch,
   LayoutTemplate,
+  Monitor,
   Share2,
   ShieldCheck,
   Shapes,
   Sparkles,
   Wand2,
+  WifiOff,
+  KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { OFFLINE_PRODUCTS } from "@/lib/pricing";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const VIEWPORT = { once: true, amount: 0.25 } as const;
@@ -271,6 +275,112 @@ export default function DiagramsLanding() {
                 </motion.div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* Offline Diagram Studio */}
+      <section
+        id="offline"
+        className="relative scroll-mt-20 overflow-hidden border-t border-slate-200/70 bg-white py-20 sm:py-24"
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 55% 45% at 90% 20%, rgba(37,99,235,0.08), transparent 55%)",
+          }}
+        />
+        <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.5, ease: EASE }}
+            >
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">
+                <WifiOff className="h-3.5 w-3.5" />
+                Offline · Windows
+              </p>
+              <h2 className="font-heading mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                Diagram Studio on your desktop
+              </h2>
+              <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-500 sm:text-lg">
+                Prefer diagrams that never leave your machine? License Diagram Studio Desktop —
+                draw.io-style canvas, shapes, and export, offline after activation.
+              </p>
+              <ul className="mt-7 space-y-2.5">
+                {[
+                  { icon: Monitor, text: "Native Windows app — no browser required" },
+                  { icon: WifiOff, text: "Works offline once licensed" },
+                  { icon: KeyRound, text: "Activate with a license key; team seats available" },
+                ].map((row) => {
+                  const Icon = row.icon;
+                  return (
+                    <li
+                      key={row.text}
+                      className="flex items-start gap-2.5 text-sm font-medium text-slate-600"
+                    >
+                      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                      {row.text}
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="mt-9 flex flex-wrap gap-3">
+                <Button
+                  asChild
+                  size="lg"
+                  className="h-12 cursor-pointer rounded-full bg-blue-600 px-7 font-semibold text-white hover:bg-blue-700"
+                >
+                  <a href={OFFLINE_PRODUCTS[1].downloadMailto}>Download for Windows</a>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 cursor-pointer rounded-full border-slate-200 px-7 font-semibold"
+                  onClick={() => navigate("/desktop")}
+                >
+                  Explore desktop
+                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="lg"
+                  className="h-12 cursor-pointer rounded-full px-5 font-semibold text-slate-600"
+                >
+                  <a href={OFFLINE_PRODUCTS[1].licenseMailto}>Get license</a>
+                </Button>
+              </div>
+            </motion.div>
+
+            <motion.div
+              className="rounded-3xl border border-slate-200 bg-[#F8FAFC] p-6 shadow-sm sm:p-8"
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={VIEWPORT}
+              transition={{ duration: 0.5, delay: 0.08, ease: EASE }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">
+                Also available
+              </p>
+              <h3 className="mt-2 text-xl font-bold text-slate-900">PDF Toolkit Desktop</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                Pair diagrams with the full PDF toolkit offline — merge, protect, convert, and more
+                on the same Windows license workflow.
+              </p>
+              <Button
+                className="mt-6 rounded-full"
+                variant="outline"
+                onClick={() => navigate("/desktop")}
+              >
+                See PDF desktop tools
+                <ArrowRight className="ml-1.5 h-4 w-4" />
+              </Button>
+            </motion.div>
           </div>
         </div>
       </section>
