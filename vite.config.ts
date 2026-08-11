@@ -59,24 +59,33 @@ function pdfjsAssets(): Plugin {
  * scope-hoisting. Rewrite to indirect eval `(0, eval)(...)` so the helper
  * still works if allowEval is ever enabled, without the build warning.
  * Our editor keeps allowEval disabled, so this path is not used at runtime.
+ *
+ * IMPORTANT: use Rolldown's native `filter` so this hook is NOT invoked for
+ * every module (that was the PLUGIN_TIMINGS hot path). Only the one utils
+ * file is transformed.
  */
 function patchMaxGraphEval(): Plugin {
+  const MATCH =
+    /(?:^|[\\/])node_modules[\\/]@maxgraph[\\/]core[\\/].*[\\/]internal[\\/]utils\.js$/
+
   return {
     name: "patch-maxgraph-eval",
     enforce: "pre",
-    transform(code, id) {
-      const normalized = id.replace(/\\/g, "/")
-      if (!normalized.includes("/@maxgraph/core/") || !normalized.endsWith("/internal/utils.js")) {
-        return null
-      }
-      if (!code.includes("return eval(expression)")) return null
-      return {
-        code: code.replace(
-          "return eval(expression);",
-          "return (0, eval)(expression);"
-        ),
-        map: null,
-      }
+    transform: {
+      filter: {
+        id: { include: [MATCH] },
+        code: { include: ["return eval(expression)"] },
+      },
+      handler(code) {
+        if (!code.includes("return eval(expression)")) return null
+        return {
+          code: code.replace(
+            "return eval(expression);",
+            "return (0, eval)(expression);"
+          ),
+          map: null,
+        }
+      },
     },
   }
 }
