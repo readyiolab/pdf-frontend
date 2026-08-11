@@ -580,8 +580,38 @@ export function ToolRail({
         </div>
 
         {tools?.showPenStrip ? <PenStrip /> : null}
+        {!tools?.showPenStrip ? <ModeStatusChip activeTool={activeTool} pendingShape={tools?.pendingShape} /> : null}
       </div>
     </TooltipProvider>
+  );
+}
+
+function ModeStatusChip({
+  activeTool,
+  pendingShape,
+}: {
+  activeTool: string;
+  pendingShape?: string | null;
+}) {
+  let label: string | null = null;
+  if (activeTool === "connector" || activeTool === "arrow") {
+    label = "Connector · Esc";
+  } else if (activeTool === "shape-place") {
+    const shape = pendingShape ? pendingShape.replace(/-/g, " ") : "shape";
+    label = `Place ${shape} · click canvas`;
+  } else if (activeTool === "pan") {
+    label = "Pan · Esc";
+  }
+
+  if (!label) return null;
+
+  return (
+    <div className="flex h-8 items-center gap-2 border-b border-[#e2e8f0] bg-[#eff6ff] px-2.5">
+      <span className="rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-[#1d4ed8] ring-1 ring-[#bfdbfe]">
+        {label}
+      </span>
+      <span className="text-[10px] text-[#64748b]">Press Esc or Select to exit</span>
+    </div>
   );
 }
 

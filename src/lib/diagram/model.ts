@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Cell, CellStyle, Graph } from "@maxgraph/core";
+import { CUSTOM_SHAPE } from "./customShapes";
 
 export const nodeStyleSchema = z.object({
   fill: z.string().optional(),
@@ -293,7 +294,8 @@ export function upgradeDocument(doc: DiagramDocument): DiagramDocument {
   };
 }
 
-function shapeToMaxStyle(shape: string): Partial<CellStyle> {
+/** Map app shape names → maxGraph CellStyle shape props (place + load). */
+export function shapeToMaxStyle(shape: string): Partial<CellStyle> {
   const map: Record<string, Partial<CellStyle>> = {
     rectangle: { shape: "rectangle" },
     rounded: { shape: "rectangle", rounded: true, arcSize: 20 },
@@ -301,23 +303,25 @@ function shapeToMaxStyle(shape: string): Partial<CellStyle> {
     circle: { shape: "ellipse" },
     diamond: { shape: "rhombus" },
     rhombus: { shape: "rhombus" },
-    parallelogram: { shape: "hexagon" },
+    parallelogram: { shape: CUSTOM_SHAPE.parallelogram },
     hexagon: { shape: "hexagon" },
     cylinder: { shape: "cylinder" },
     cloud: { shape: "cloud" },
     actor: { shape: "actor" },
     triangle: { shape: "triangle" },
     doubleEllipse: { shape: "doubleEllipse" },
-    document: { shape: "label" },
-    note: { shape: "label" },
-    process: { shape: "rectangle", rounded: true },
+    document: { shape: CUSTOM_SHAPE.document },
+    note: { shape: CUSTOM_SHAPE.note },
+    process: { shape: "rectangle", rounded: true, arcSize: 20 },
     decision: { shape: "rhombus" },
     terminator: { shape: "ellipse" },
-    data: { shape: "parallelogram" as CellStyle["shape"] },
+    data: { shape: CUSTOM_SHAPE.parallelogram },
     text: { shape: "rectangle", fillColor: "none", strokeColor: "none" },
     arrow: { shape: "arrow" },
     line: { shape: "line" },
     swimlane: { shape: "swimlane" },
+    plus: { shape: CUSTOM_SHAPE.plus },
+    [CUSTOM_SHAPE.freehand]: { shape: CUSTOM_SHAPE.freehand, fillColor: "none" },
   };
   return map[shape] ?? { shape: shape as CellStyle["shape"] };
 }
@@ -325,18 +329,26 @@ function shapeToMaxStyle(shape: string): Partial<CellStyle> {
 function nodeToCellStyle(node: DiagramNode): CellStyle {
   const s = node.style ?? {};
   const kind = node.kind ?? "shape";
+  const shapeName =
+    kind === "freehand" ? CUSTOM_SHAPE.freehand : node.shape || "rectangle";
   const base: CellStyle = {
-    ...shapeToMaxStyle(node.shape),
-    fillColor: s.fill ?? "#dae8fc",
-    strokeColor: s.stroke ?? "#6c8ebf",
-    strokeWidth: s.strokeWidth ?? 1.5,
+    ...shapeToMaxStyle(shapeName),
+    fillColor:
+      kind === "freehand"
+        ? "none"
+        : (s.fill ?? (shapeName === "text" ? "none" : "#dae8fc")),
+    strokeColor:
+      kind === "freehand"
+        ? (s.stroke ?? node.freehand?.color ?? "#111827")
+        : (s.stroke ?? (shapeName === "text" ? "none" : "#6c8ebf")),
+    strokeWidth: s.strokeWidth ?? (kind === "freehand" ? Math.max(1, (node.freehand?.size ?? 2) / 2) : 1.5),
     dashed: s.dashed ?? false,
-    fontSize: s.fontSize ?? 12,
-    fontColor: s.fontColor ?? "#333333",
+    fontSize: s.fontSize ?? (kind === "freehand" ? 1 : 12),
+    fontColor: s.fontColor ?? (kind === "freehand" ? "none" : "#333333"),
     fontFamily: s.fontFamily ?? "Helvetica",
     fontStyle: s.fontStyle ?? 0,
     shadow: s.shadow ?? false,
-    opacity: s.opacity ?? 100,
+    opacity: s.opacity ?? (kind === "freehand" ? Math.round((node.freehand?.opacity ?? 1) * 100) : 100),
     align: (s.align as CellStyle["align"]) ?? "center",
     verticalAlign: (s.verticalAlign as CellStyle["verticalAlign"]) ?? "middle",
     whiteSpace: "wrap",
@@ -432,6 +444,7 @@ function cellShapeName(style: CellStyle): string {
   const shape = String(style.shape ?? "rectangle");
   if (shape === "rectangle" && style.rounded) return "rounded";
   if (shape === "rhombus") return "diamond";
+  if (shape === CUSTOM_SHAPE.freehand || shape === "diagramFreehand") return CUSTOM_SHAPE.freehand;
   return shape;
 }
 

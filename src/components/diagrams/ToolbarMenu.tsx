@@ -13,6 +13,7 @@ export function RailBtn({
   label,
   shortcut,
   active,
+  emphasis,
   onClick,
   children,
   disabled,
@@ -22,6 +23,8 @@ export function RailBtn({
   label: string;
   shortcut?: string;
   active?: boolean;
+  /** Stronger lit treatment (e.g. connector mode stays obvious after menu closes). */
+  emphasis?: boolean;
   onClick?: () => void;
   children: ReactNode;
   disabled?: boolean;
@@ -45,7 +48,9 @@ export function RailBtn({
       }}
       className={cn(
         "relative size-7 rounded-md text-[#334155] transition-colors duration-100 hover:bg-[#e2e8f0]",
-        active && "bg-white text-[#1d4ed8] shadow-sm ring-1 ring-[#93c5fd]"
+        active && "bg-white text-[#1d4ed8] shadow-sm ring-1 ring-[#93c5fd]",
+        emphasis &&
+          "bg-[#dbeafe] text-[#1e40af] shadow-sm ring-2 ring-[#3b82f6] ring-offset-1 ring-offset-[#f1f5f9] [&_svg]:fill-current [&_svg]:stroke-[2.25]"
       )}
     >
       {children}
@@ -113,6 +118,7 @@ export function ToolbarMenu({
         label={label}
         shortcut={shortcut}
         active={active}
+        emphasis={Boolean(toolActive) && !open}
         hasMenu
         menuOpen={open}
         onClick={() => {

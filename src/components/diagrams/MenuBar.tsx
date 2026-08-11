@@ -15,17 +15,38 @@ type Props = {
 export function MenuBar({ menus, className }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLeaveTimer = () => {
+    if (leaveTimer.current) {
+      clearTimeout(leaveTimer.current);
+      leaveTimer.current = null;
+    }
+  };
+
+  const scheduleClose = () => {
+    clearLeaveTimer();
+    leaveTimer.current = setTimeout(() => setOpenId(null), 150);
+  };
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpenId(null);
     };
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      clearLeaveTimer();
+    };
   }, []);
 
   return (
-    <div ref={rootRef} className={cn("relative flex items-center gap-0.5 text-[12px]", className)}>
+    <div
+      ref={rootRef}
+      className={cn("relative flex items-center gap-0.5 text-[12px]", className)}
+      onMouseEnter={clearLeaveTimer}
+      onMouseLeave={scheduleClose}
+    >
       {menus.map((menu) => (
         <div key={menu.id} className="relative">
           <button
@@ -36,13 +57,17 @@ export function MenuBar({ menus, className }: Props) {
             )}
             onClick={() => setOpenId((v) => (v === menu.id ? null : menu.id))}
             onMouseEnter={() => {
+              clearLeaveTimer();
               if (openId) setOpenId(menu.id);
             }}
           >
             {menu.label}
           </button>
           {openId === menu.id && (
-            <div className="absolute left-0 top-full z-50 mt-0.5 min-w-[220px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg">
+            <div
+              className="absolute left-0 top-full z-50 mt-0.5 min-w-[220px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg"
+              onMouseEnter={clearLeaveTimer}
+            >
               {menu.items.map((item, i) =>
                 item.type === "sep" ? (
                   <div key={`sep-${i}`} className="my-1 border-t border-[#e2e8f0]" />

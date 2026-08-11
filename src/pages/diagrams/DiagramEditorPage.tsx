@@ -288,6 +288,16 @@ function DiagramEditorInner() {
       }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault();
+        if (presentOpen) {
+          if (e.key === "ArrowLeft") {
+            canvas.stepFlowBack();
+            setPresentPlaying(false);
+          } else if (e.key === "ArrowRight") {
+            canvas.stepFlow();
+            setPresentPlaying(false);
+          }
+          return;
+        }
         const step = e.shiftKey ? 10 : 1;
         const map: Record<string, [number, number]> = {
           ArrowUp: [0, -step],
@@ -1147,6 +1157,10 @@ function DiagramEditorInner() {
               }}
               onStep={() => {
                 canvasRef.current?.stepFlow();
+                setPresentPlaying(false);
+              }}
+              onStepBack={() => {
+                canvasRef.current?.stepFlowBack();
                 setPresentPlaying(false);
               }}
               onSpeed={(s) => {

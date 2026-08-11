@@ -124,7 +124,13 @@ export function PageTabs({
             )}
 
             {menuFor === page.id && (
-              <div className="absolute bottom-full left-0 z-50 mb-1 min-w-[200px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg">
+              <div
+                className="absolute bottom-full left-0 z-50 mb-1 min-w-[200px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg"
+                onMouseLeave={() => {
+                  setMoveOpen(false);
+                  setMenuFor(null);
+                }}
+              >
                 <CtxItem
                   label="Insert Page"
                   onClick={() => {
@@ -141,7 +147,10 @@ export function PageTabs({
                     setMenuFor(null);
                   }}
                 />
-                <div className="relative">
+                <div
+                  className="relative"
+                  onMouseLeave={() => setMoveOpen(false)}
+                >
                   <button
                     type="button"
                     className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-[#eff6ff]"
@@ -152,7 +161,10 @@ export function PageTabs({
                     <ChevronRight className="size-3.5 text-[#94a3b8]" />
                   </button>
                   {moveOpen && (
-                    <div className="absolute left-full top-0 z-50 ml-0.5 min-w-[140px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg">
+                    <div
+                      className="absolute left-full top-0 z-50 ml-0.5 min-w-[140px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg"
+                      onMouseEnter={() => setMoveOpen(true)}
+                    >
                       <CtxItem
                         label="Move Left"
                         disabled={pageIndex(page.id) <= 0}
@@ -208,7 +220,13 @@ export function PageTabs({
           <Menu className="size-3.5" />
         </button>
         {globalMenu && (
-          <div className="absolute bottom-full right-0 z-50 mb-1 min-w-[200px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg">
+          <div
+            className="absolute bottom-full right-0 z-50 mb-1 min-w-[200px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg"
+            onMouseLeave={() => {
+              setListSubFor(null);
+              setGlobalMenu(false);
+            }}
+          >
             <CtxItem
               label="Insert Page"
               onClick={() => {
@@ -221,7 +239,13 @@ export function PageTabs({
               Page List
             </p>
             {pages.map((page) => (
-              <div key={page.id} className="relative">
+              <div
+                key={page.id}
+                className="relative"
+                onMouseLeave={() => {
+                  if (listSubFor === page.id) setListSubFor(null);
+                }}
+              >
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[#eff6ff]"
@@ -240,7 +264,10 @@ export function PageTabs({
                   <ChevronRight className="size-3.5 shrink-0 text-[#94a3b8]" />
                 </button>
                 {listSubFor === page.id && (
-                  <div className="absolute right-full top-0 z-50 mr-0.5 min-w-[180px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg">
+                  <div
+                    className="absolute right-full top-0 z-50 mr-0.5 min-w-[180px] rounded border border-[#cfd8e3] bg-white py-1 shadow-lg"
+                    onMouseEnter={() => setListSubFor(page.id)}
+                  >
                     <CtxItem label="Rename Page…" onClick={() => startRename(page)} />
                     <CtxItem
                       label="Remove Page"

@@ -1,4 +1,4 @@
-import { Pause, Play, RotateCcw, SkipForward, X } from "lucide-react";
+import { Pause, Play, RotateCcw, SkipBack, SkipForward, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,7 @@ type Props = {
   onPause: () => void;
   onRestart: () => void;
   onStep: () => void;
+  onStepBack: () => void;
   onSpeed: (speed: number) => void;
   onExit: () => void;
   className?: string;
@@ -21,6 +22,7 @@ export function PresentBar({
   onPause,
   onRestart,
   onStep,
+  onStepBack,
   onSpeed,
   onExit,
   className,
@@ -28,10 +30,22 @@ export function PresentBar({
   return (
     <div
       className={cn(
-        "pointer-events-auto absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[#cfd8e3] bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur",
+        "pointer-events-auto absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-[#cfd8e3] bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur",
         className
       )}
     >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        className="rounded-full"
+        onClick={onStepBack}
+        aria-label="Previous"
+        title="Previous"
+      >
+        <SkipBack className="size-3.5" />
+      </Button>
+
       {playing ? (
         <Button
           type="button"
@@ -40,6 +54,7 @@ export function PresentBar({
           className="rounded-full"
           onClick={onPause}
           aria-label="Pause"
+          title="Pause"
         >
           <Pause className="size-3.5" />
         </Button>
@@ -51,6 +66,7 @@ export function PresentBar({
           className="rounded-full"
           onClick={onPlay}
           aria-label="Play"
+          title="Play"
         >
           <Play className="size-3.5" />
         </Button>
@@ -61,10 +77,11 @@ export function PresentBar({
         variant="ghost"
         size="icon-xs"
         className="rounded-full"
-        onClick={onRestart}
-        aria-label="Restart"
+        onClick={onStep}
+        aria-label="Next"
+        title="Next"
       >
-        <RotateCcw className="size-3.5" />
+        <SkipForward className="size-3.5" />
       </Button>
 
       <Button
@@ -72,10 +89,11 @@ export function PresentBar({
         variant="ghost"
         size="icon-xs"
         className="rounded-full"
-        onClick={onStep}
-        aria-label="Step"
+        onClick={onRestart}
+        aria-label="Restart"
+        title="Restart"
       >
-        <SkipForward className="size-3.5" />
+        <RotateCcw className="size-3.5" />
       </Button>
 
       <div className="mx-1 flex items-center gap-2 border-l border-[#e2e8f0] pl-3">
@@ -104,6 +122,7 @@ export function PresentBar({
         className="rounded-full"
         onClick={onExit}
         aria-label="Exit present"
+        title="Exit"
       >
         <X className="size-3.5" />
       </Button>

@@ -32,13 +32,17 @@ import "@maxgraph/core/css/common.css";
 import {
   fromMaxGraph,
   toMaxGraph,
+  shapeToMaxStyle,
   type DiagramPage,
   type DiagramSettings,
   PAPER_SIZES,
 } from "@/lib/diagram/model";
 import { allShapes, type ShapeDef } from "@/lib/diagram/shapes";
-import { getStrokeOutline, type StrokePoint } from "@/lib/diagram/freehand";
+import { strokeToSvgPath, type StrokePoint } from "@/lib/diagram/freehand";
+import { CUSTOM_SHAPE, registerDiagramCustomShapes } from "@/lib/diagram/customShapes";
 import { cn } from "@/lib/utils";
+
+registerDiagramCustomShapes();
 
 export type CanvasToolMode =
   | "select"
@@ -165,6 +169,15 @@ function applyToolModeToGraph(
   graph.setConnectable(connectable);
   const ch = graph.getPlugin("ConnectionHandler") as { setEnabled?: (v: boolean) => void } | null;
   ch?.setEnabled?.(connectable);
+
+  // Drawing tools must not select/move/rubberband
+  const interactive = !drawing && !isShapePlace && !opts.readOnly;
+  graph.setCellsMovable(interactive && !isPan);
+  graph.setCellsResizable(interactive && !isPan);
+  graph.setCellsEditable(interactive && mode === "select");
+  const rb = graph.getPlugin("RubberBandHandler") as { setEnabled?: (v: boolean) => void } | null;
+  rb?.setEnabled?.(interactive && mode === "select");
+
   if (opts.host) {
     if (drawing || isShapePlace) opts.host.style.cursor = "crosshair";
     else if (isPan) opts.host.style.cursor = "grab";
@@ -240,6 +253,7 @@ export type DiagramCanvasHandle = {
   pauseFlow: () => void;
   restartFlow: () => void;
   stepFlow: () => void;
+  stepFlowBack: () => void;
   setFlowSpeed: (s: number) => void;
   getSelectionBounds: () => { x: number; y: number; w: number; h: number } | null;
   lockSelection: (locked: boolean) => void;
@@ -298,6 +312,17 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   const [paletteDir, setPaletteDir] = useState<Dir | null>(null);
   const [paletteHover, setPaletteHover] = useState<string | null>(null);
   const [toolModeUi, setToolModeUi] = useState<CanvasToolMode>("select");
+  const [strokePreview, setStrokePreview] = useState<{
+    d: string;
+    color: string;
+    opacity: number;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    vbW: number;
+    vbH: number;
+  } | null>(null);
   const paletteDirRef = useRef<Dir | null>(null);
   paletteDirRef.current = paletteDir;
 
@@ -452,25 +477,16 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           const grid = graph.getGridSize();
           const x = snapToGrid(pt.x - w / 2, grid);
           const y = snapToGrid(pt.y - h / 2, grid);
+          const mapped = shapeToMaxStyle(def.shape);
           const style: CellStyle = {
-            shape:
-              def.shape === "rounded" || def.shape === "process"
-                ? "rectangle"
-                : (def.shape as CellStyle["shape"]),
-            rounded: def.shape === "rounded" || def.shape === "process",
-            fillColor: "#dae8fc",
-            strokeColor: "#6c8ebf",
+            ...mapped,
+            fillColor: mapped.fillColor ?? "#dae8fc",
+            strokeColor: mapped.strokeColor ?? "#6c8ebf",
             strokeWidth: 1.5,
             fontSize: 12,
             fontColor: "#333333",
             whiteSpace: "wrap",
           };
-          if (def.shape === "diamond" || def.shape === "decision") style.shape = "rhombus";
-          if (def.shape === "circle" || def.shape === "terminator") style.shape = "ellipse";
-          if (def.shape === "text") {
-            style.fillColor = "none";
-            style.strokeColor = "none";
-          }
           graph.getDataModel().beginUpdate();
           try {
             const cell = graph.insertVertex({
@@ -510,21 +526,24 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         }
         freehandDrawingRef.current = true;
         freehandPtsRef.current = [];
+        setStrokePreview(null);
         const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
         freehandPtsRef.current.push({ x: pt.x, y: pt.y, pressure: 0.5 });
         me.getEvent().preventDefault?.();
+        // Prevent maxGraph selection on pen down
+        InternalEvent.consume(me.getEvent());
       },
       mouseUp: () => {
         connectingRef.current = false;
         if (!freehandDrawingRef.current) return;
         freehandDrawingRef.current = false;
+        setStrokePreview(null);
         const pts = freehandPtsRef.current;
         freehandPtsRef.current = [];
         if (pts.length < 2) return;
         const mode = toolModeRef.current;
         const brush = mode === "brush" ? "brush" : "pen";
         const style = { ...penStyleRef.current, brush };
-        // insert via shared helper on next tick through graph directly
         const xs = pts.map((p) => p.x);
         const ys = pts.map((p) => p.y);
         const pad = style.size + 4;
@@ -535,14 +554,6 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         const relPts = pts.map(
           (p) => [p.x - minX, p.y - minY, p.pressure ?? 0.5] as [number, number, number]
         );
-        const outline = getStrokeOutline(
-          pts.map((p) => ({ x: p.x - minX, y: p.y - minY, pressure: p.pressure })),
-          { size: style.size }
-        );
-        const pathPreview =
-          outline.length > 0
-            ? outline.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")
-            : "";
         const payload = JSON.stringify({
           kind: "freehand",
           label: "",
@@ -553,7 +564,6 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
             opacity: style.opacity,
             brush,
           },
-          pathPreview,
         });
         graph.getDataModel().beginUpdate();
         try {
@@ -564,21 +574,18 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
             position: [minX, minY],
             size: [Math.max(8, maxX - minX), Math.max(8, maxY - minY)],
             style: {
-              shape: "rectangle",
+              shape: CUSTOM_SHAPE.freehand,
               fillColor: "none",
               strokeColor: style.color,
               strokeWidth: Math.max(1, style.size / 2),
               opacity: Math.round(style.opacity * 100),
-              rounded: true,
               fontSize: 1,
               fontColor: "none",
-            },
+              diagramKind: "freehand",
+            } as CellStyle,
           });
-          (cell.getStyle() as Record<string, unknown>).diagramKind = "freehand";
-          graph.getDataModel().setStyle(cell, {
-            ...(cell.getStyle() ?? {}),
-            diagramKind: "freehand",
-          } as CellStyle);
+          graph.setSelectionCells([]);
+          void cell;
         } finally {
           graph.getDataModel().endUpdate();
         }
@@ -590,6 +597,38 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           const evt = me.getEvent();
           const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
           freehandPtsRef.current.push({ x: pt.x, y: pt.y, pressure: 0.5 });
+          const pts = freehandPtsRef.current;
+          if (pts.length >= 2) {
+            const style = penStyleRef.current;
+            const xs = pts.map((p) => p.x);
+            const ys = pts.map((p) => p.y);
+            const pad = style.size + 4;
+            const minX = Math.min(...xs) - pad;
+            const minY = Math.min(...ys) - pad;
+            const maxX = Math.max(...xs) + pad;
+            const maxY = Math.max(...ys) + pad;
+            const rel = pts.map((p) => ({
+              x: p.x - minX,
+              y: p.y - minY,
+              pressure: p.pressure,
+            }));
+            const d = strokeToSvgPath(rel, style.size);
+            const scale = graph.getView().getScale();
+            const tr = graph.getView().getTranslate();
+            const vbW = Math.max(1, maxX - minX);
+            const vbH = Math.max(1, maxY - minY);
+            setStrokePreview({
+              d,
+              color: style.color,
+              opacity: style.opacity,
+              left: (minX + tr.x) * scale,
+              top: (minY + tr.y) * scale,
+              width: vbW * scale,
+              height: vbH * scale,
+              vbW,
+              vbH,
+            });
+          }
           return;
         }
         if (paletteDirRef.current) return;
@@ -771,26 +810,20 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       const h = def.h ?? 60;
       const x = at?.x ?? 80 + Math.random() * 40;
       const y = at?.y ?? 80 + Math.random() * 40;
+      const mapped = shapeToMaxStyle(def.shape);
       const style: CellStyle = {
-        shape: def.shape === "rounded" || def.shape === "process" ? "rectangle" : (def.shape as CellStyle["shape"]),
-        rounded: def.shape === "rounded" || def.shape === "process",
-        fillColor: "#dae8fc",
-        strokeColor: "#6c8ebf",
+        ...mapped,
+        fillColor: mapped.fillColor ?? "#dae8fc",
+        strokeColor: mapped.strokeColor ?? "#6c8ebf",
         strokeWidth: 1.5,
         fontSize: 12,
         fontColor: "#333333",
         whiteSpace: "wrap",
       };
-      if (def.shape === "diamond" || def.shape === "decision") style.shape = "rhombus";
-      if (def.shape === "circle" || def.shape === "terminator") style.shape = "ellipse";
-      if (def.shape === "text") {
-        style.fillColor = "none";
-        style.strokeColor = "none";
-      }
       graph.insertVertex({
         parent,
         id: crypto.randomUUID(),
-        value: def.label === "Text" ? "Text" : "",
+        value: def.label === "Text" || def.shape === "text" ? "Text" : "",
         position: [x, y],
         size: [w, h],
         style,
@@ -1249,12 +1282,13 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         position: [minX, minY],
         size: [Math.max(8, maxX - minX), Math.max(8, maxY - minY)],
         style: {
-          shape: "rectangle",
+          shape: CUSTOM_SHAPE.freehand,
           fillColor: "none",
           strokeColor: style.color,
           strokeWidth: Math.max(1, style.size / 2),
           opacity: Math.round(style.opacity * 100),
-          rounded: true,
+          fontSize: 1,
+          fontColor: "none",
           diagramKind: "freehand",
         } as CellStyle,
       });
@@ -1470,6 +1504,39 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       });
       flowIndexRef.current = (idx + 1) % list.length;
     },
+    stepFlowBack: () => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      if (flowTimerRef.current) {
+        clearInterval(flowTimerRef.current);
+        flowTimerRef.current = null;
+      }
+      let list = flowEdgesRef.current;
+      if (!list.length) {
+        list = graph.getChildEdges(graph.getDefaultParent());
+        flowEdgesRef.current = list;
+        flowOrigStylesRef.current = new Map(
+          list.map((e) => [e.getId() || "", { ...(e.getStyle() ?? {}) }])
+        );
+      }
+      if (!list.length) return;
+      for (const e of list) {
+        const id = e.getId() || "";
+        const orig = flowOrigStylesRef.current.get(id);
+        if (orig) graph.getDataModel().setStyle(e, { ...orig });
+      }
+      // flowIndex points to *next* after last highlight; step back twice worth of logic:
+      // go to previous highlight index
+      const nextIdx = flowIndexRef.current % list.length;
+      const prevIdx = (nextIdx - 2 + list.length * 2) % list.length;
+      const edge = list[prevIdx]!;
+      graph.getDataModel().setStyle(edge, {
+        ...(edge.getStyle() ?? {}),
+        strokeColor: "#2563eb",
+        strokeWidth: 3,
+      });
+      flowIndexRef.current = (prevIdx + 1) % list.length;
+    },
     setFlowSpeed: (s) => {
       flowSpeedRef.current = Math.max(0.25, Math.min(3, s));
       if (flowTimerRef.current) {
@@ -1597,6 +1664,27 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         aria-hidden
       />
       <div ref={hostRef} className="absolute inset-0 min-h-full min-w-full" />
+
+      {strokePreview ? (
+        <svg
+          className="pointer-events-none absolute z-30 overflow-visible"
+          style={{
+            left: strokePreview.left,
+            top: strokePreview.top,
+            width: strokePreview.width,
+            height: strokePreview.height,
+          }}
+          viewBox={`0 0 ${strokePreview.vbW} ${strokePreview.vbH}`}
+          aria-hidden
+        >
+          <path
+            d={strokePreview.d}
+            fill={strokePreview.color}
+            fillOpacity={strokePreview.opacity}
+            stroke="none"
+          />
+        </svg>
+      ) : null}
 
       {hoverUi &&
         !readOnly &&
