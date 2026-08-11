@@ -33,12 +33,15 @@ import {
   fromMaxGraph,
   toMaxGraph,
   shapeToMaxStyle,
+  cellValueToDisplay,
+  encodeEditedCellValue,
+  parseCellValue,
   type DiagramPage,
   type DiagramSettings,
   PAPER_SIZES,
 } from "@/lib/diagram/model";
 import { allShapes, type ShapeDef } from "@/lib/diagram/shapes";
-import { strokeToSvgPath, type StrokePoint } from "@/lib/diagram/freehand";
+import { type StrokePoint } from "@/lib/diagram/freehand";
 import { CUSTOM_SHAPE, registerDiagramCustomShapes } from "@/lib/diagram/customShapes";
 import { cn } from "@/lib/utils";
 
@@ -316,6 +319,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     d: string;
     color: string;
     opacity: number;
+    size: number;
     left: number;
     top: number;
     width: number;
@@ -424,6 +428,20 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     graph.setTooltips(true);
     graph.getView().setTranslate(40, 40);
     graph.getView().setAllowEval(false);
+
+    // Never show raw JSON payloads as labels (table/freehand/container)
+    graph.convertValueToString = (cell: Cell) => cellValueToDisplay(cell.getValue());
+    const baseIsHtmlLabel = graph.isHtmlLabel.bind(graph);
+    graph.isHtmlLabel = (cell: Cell) => {
+      const kind = parseCellValue(cell.getValue()).kind;
+      if (kind === "table") return true;
+      return baseIsHtmlLabel(cell);
+    };
+    const baseCellLabelChanged = graph.cellLabelChanged.bind(graph);
+    graph.cellLabelChanged = (cell: Cell, value: unknown, autoSize?: boolean) => {
+      const next = encodeEditedCellValue(cell.getValue(), String(value ?? ""));
+      baseCellLabelChanged(cell, next, Boolean(autoSize));
+    };
 
     // Cardinal connection points (draw.io-style)
     graph.getAllConnectionConstraints = (terminal: CellState | null, _source: boolean) => {
@@ -577,7 +595,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
               shape: CUSTOM_SHAPE.freehand,
               fillColor: "none",
               strokeColor: style.color,
-              strokeWidth: Math.max(1, style.size / 2),
+              strokeWidth: Math.max(1, style.size),
               opacity: Math.round(style.opacity * 100),
               fontSize: 1,
               fontColor: "none",
@@ -612,7 +630,14 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
               y: p.y - minY,
               pressure: p.pressure,
             }));
-            const d = strokeToSvgPath(rel, style.size);
+            const d =
+              rel.length < 2
+                ? ""
+                : `M ${rel[0]!.x.toFixed(2)} ${rel[0]!.y.toFixed(2)}` +
+                  rel
+                    .slice(1)
+                    .map((p) => ` L ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+                    .join("");
             const scale = graph.getView().getScale();
             const tr = graph.getView().getTranslate();
             const vbW = Math.max(1, maxX - minX);
@@ -621,6 +646,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
               d,
               color: style.color,
               opacity: style.opacity,
+              size: style.size,
               left: (minX + tr.x) * scale,
               top: (minY + tr.y) * scale,
               width: vbW * scale,
@@ -1175,13 +1201,10 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           cells.push({ r: ri, c: ci, text: ri === 0 ? `Col ${ci + 1}` : "" });
         }
       }
-      const labelLines = Array.from({ length: r }, (_, ri) =>
-        Array.from({ length: c }, (_, ci) => (ri === 0 ? `C${ci + 1}` : "·")).join(" | ")
-      );
-      const title = opts?.title ? "Table\n" : "";
+      const title = opts?.title ? "Table" : "";
       const payload = JSON.stringify({
         kind: "table",
-        label: `${title}${labelLines.join("\n")}`,
+        label: title,
         table: { rows: r, cols: c, cells },
         container: opts?.container ? { title: "Table", childIds: [] } : undefined,
       });
@@ -1196,7 +1219,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           size: [w, Math.max(h, 60)],
           style: {
             shape: opts?.container ? "swimlane" : "rectangle",
-            rounded: true,
+            rounded: false,
             fillColor: "#ffffff",
             strokeColor: "#6c8ebf",
             strokeWidth: 1.5,
@@ -1205,6 +1228,9 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
             align: "left",
             verticalAlign: "top",
             whiteSpace: "wrap",
+            overflow: "fill",
+            spacing: 4,
+            editable: false,
             startSize: opts?.title || opts?.container ? 28 : undefined,
             diagramKind: "table",
           } as CellStyle,
@@ -1285,7 +1311,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           shape: CUSTOM_SHAPE.freehand,
           fillColor: "none",
           strokeColor: style.color,
-          strokeWidth: Math.max(1, style.size / 2),
+          strokeWidth: Math.max(1, style.size),
           opacity: Math.round(style.opacity * 100),
           fontSize: 1,
           fontColor: "none",
@@ -1679,9 +1705,12 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         >
           <path
             d={strokePreview.d}
-            fill={strokePreview.color}
-            fillOpacity={strokePreview.opacity}
-            stroke="none"
+            fill="none"
+            stroke={strokePreview.color}
+            strokeOpacity={strokePreview.opacity}
+            strokeWidth={strokePreview.size}
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
         </svg>
       ) : null}

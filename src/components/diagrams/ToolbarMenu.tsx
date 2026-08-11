@@ -131,7 +131,7 @@ export function ToolbarMenu({
       </RailBtn>
       <div
         className={cn(
-          "absolute top-full z-50 mt-1 transition-all duration-150",
+          "absolute top-full z-[100] mt-1 transition-all duration-150",
           align === "left" ? "left-0" : "right-0",
           open
             ? "pointer-events-auto translate-y-0 opacity-100"

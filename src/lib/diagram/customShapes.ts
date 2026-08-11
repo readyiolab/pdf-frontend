@@ -4,7 +4,6 @@ import {
   type AbstractCanvas2D,
   type Cell,
 } from "@maxgraph/core";
-import { getStrokeOutline } from "./freehand";
 
 /** Custom shape names registered for the diagram editor. */
 export const CUSTOM_SHAPE = {
@@ -40,40 +39,41 @@ function parseFreehandPoints(cell: Cell | null | undefined): {
   };
 }
 
-/** Filled stroke outline from stored freehand points (relative to cell origin). */
+/**
+ * Freehand ink as a stroked polyline (not a filled outline).
+ * Filled outlines self-intersect on loops and often leave a thin horizontal chord
+ * through the cell midpoint — the gray line users were seeing.
+ */
 class FreehandShape extends Shape {
-  paintVertexShape(c: AbstractCanvas2D, x: number, y: number, w: number, h: number) {
+  paintVertexShape(c: AbstractCanvas2D, x: number, y: number, _w: number, _h: number) {
     const data = parseFreehandPoints(this.state?.cell);
+    if (!data?.points.length) return;
+
+    const ink = this.stroke && this.stroke !== "none" ? this.stroke : "#111827";
+    const size = Math.max(1, data.size);
     c.translate(x, y);
-    if (!data) {
-      // Fallback box if points missing
-      c.rect(0, 0, w, h);
-      c.fillAndStroke();
+    c.setFillColor("none");
+    c.setStrokeColor(ink);
+    c.setStrokeWidth(size);
+    // Round caps/joins so short segments read as a continuous stroke
+    c.setLineCap("round");
+    c.setLineJoin("round");
+
+    if (data.points.length === 1) {
+      const p0 = data.points[0]!;
+      c.ellipse(p0[0]! - size / 2, p0[1]! - size / 2, size, size);
+      c.setFillColor(ink);
+      c.setStrokeColor("none");
+      c.fill();
       return;
     }
-    const outline = getStrokeOutline(
-      data.points.map(([px, py, pr]) => ({ x: px, y: py, pressure: pr ?? 0.5 })),
-      { size: data.size }
-    );
-    if (outline.length < 2) {
-      const p0 = data.points[0];
-      if (p0) {
-        c.ellipse(p0[0] - data.size / 2, p0[1] - data.size / 2, data.size, data.size);
-        c.fillAndStroke();
-      }
-      return;
-    }
-    // Use stroke color as fill for ink look; no outer stroke
-    const ink = this.stroke || this.fill || "#111827";
-    c.setFillColor(ink);
-    c.setStrokeColor("none");
+
     c.begin();
-    c.moveTo(outline[0]![0], outline[0]![1]);
-    for (let i = 1; i < outline.length; i++) {
-      c.lineTo(outline[i]![0], outline[i]![1]);
+    c.moveTo(data.points[0]![0]!, data.points[0]![1]!);
+    for (let i = 1; i < data.points.length; i++) {
+      c.lineTo(data.points[i]![0]!, data.points[i]![1]!);
     }
-    c.close();
-    c.fill();
+    c.stroke();
   }
 }
 

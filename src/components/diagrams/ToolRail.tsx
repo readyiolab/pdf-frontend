@@ -228,8 +228,8 @@ export function ToolRail({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className={cn("relative flex shrink-0 flex-col", className)}>
-        <div className="flex h-10 items-center gap-0.5 overflow-x-auto border-b border-[#cfd8e3] bg-[#f1f5f9] px-1.5">
+      <div className={cn("relative z-40 flex shrink-0 flex-col", className)}>
+        <div className="relative flex h-10 items-center gap-0.5 overflow-visible border-b border-[#cfd8e3] bg-[#f1f5f9] px-1.5">
           {onToggleLeftPanel ? (
             <RailBtn label="Toggle left panel" shortcut="Ctrl+Shift+P" onClick={onToggleLeftPanel}>
               <PanelLeft className="size-3.5" />
@@ -606,7 +606,7 @@ function ModeStatusChip({
   if (!label) return null;
 
   return (
-    <div className="flex h-8 items-center gap-2 border-b border-[#e2e8f0] bg-[#eff6ff] px-2.5">
+    <div className="relative z-30 flex h-8 items-center gap-2 border-b border-[#e2e8f0] bg-[#eff6ff] px-2.5">
       <span className="rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-[#1d4ed8] ring-1 ring-[#bfdbfe]">
         {label}
       </span>
@@ -635,7 +635,7 @@ function PenStrip() {
   ];
 
   return (
-    <div className="flex h-9 items-center gap-1 border-b border-[#e2e8f0] bg-white px-2">
+    <div className="relative z-30 flex h-9 items-center gap-1 border-b border-[#e2e8f0] bg-white px-2 shadow-sm">
       {chips.map((c) => (
         <button
           key={c.id}

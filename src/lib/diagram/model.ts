@@ -198,7 +198,8 @@ function isCellValuePayload(v: unknown): v is CellValuePayload {
   );
 }
 
-function parseCellValue(raw: unknown): {
+/** Parse diagram cell value (plain label or JSON payload). */
+export function parseCellValue(raw: unknown): {
   label: string;
   kind: NodeKind;
   freehand?: FreehandData;
@@ -233,6 +234,79 @@ function parseCellValue(raw: unknown): {
     }
   }
   return { label: str, kind: "shape" };
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** HTML table markup for canvas labels (htmlLabels). */
+export function tableToHtml(table: TableData, title?: string): string {
+  const parts: string[] = [];
+  if (title) {
+    parts.push(
+      `<div style="font-weight:600;margin:0 0 4px;font-size:12px;color:#0f172a">${escapeHtml(title)}</div>`
+    );
+  }
+  parts.push(
+    `<table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;color:#334155">`
+  );
+  for (let ri = 0; ri < table.rows; ri++) {
+    parts.push("<tr>");
+    for (let ci = 0; ci < table.cols; ci++) {
+      const cell = table.cells.find((x) => x.r === ri && x.c === ci);
+      const text = cell?.text?.trim() ? cell.text : ri === 0 ? `Col ${ci + 1}` : "";
+      const tag = ri === 0 ? "th" : "td";
+      const bg = ri === 0 ? "background:#f1f5f9;" : "";
+      parts.push(
+        `<${tag} style="border:1px solid #94a3b8;padding:4px 6px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${bg}">${
+          text ? escapeHtml(text) : "&nbsp;"
+        }</${tag}>`
+      );
+    }
+    parts.push("</tr>");
+  }
+  parts.push("</table>");
+  return parts.join("");
+}
+
+/** Display string / HTML for a cell value (never raw JSON). */
+export function cellValueToDisplay(raw: unknown): string {
+  const parsed = parseCellValue(raw);
+  if (parsed.kind === "freehand") return "";
+  if (parsed.kind === "table" && parsed.table) {
+    const title =
+      parsed.label && !parsed.label.includes("|") && !parsed.label.startsWith("{")
+        ? parsed.label
+        : undefined;
+    return tableToHtml(parsed.table, title);
+  }
+  if (parsed.kind === "container") {
+    return parsed.container?.title || parsed.label || "Container";
+  }
+  return parsed.label ?? "";
+}
+
+/** Persist an edited label back into JSON payloads when needed. */
+export function encodeEditedCellValue(raw: unknown, newLabel: string): unknown {
+  const parsed = parseCellValue(raw);
+  if (parsed.kind === "shape" || parsed.kind === "text") {
+    return newLabel;
+  }
+  const payload: CellValuePayload = {
+    kind: parsed.kind,
+    label: newLabel,
+  };
+  if (parsed.freehand) payload.freehand = parsed.freehand;
+  if (parsed.table) payload.table = parsed.table;
+  if (parsed.container) {
+    payload.container = { ...parsed.container, title: newLabel || parsed.container.title };
+  }
+  return JSON.stringify(payload);
 }
 
 function encodeCellValue(node: DiagramNode): string {
@@ -341,7 +415,7 @@ function nodeToCellStyle(node: DiagramNode): CellStyle {
       kind === "freehand"
         ? (s.stroke ?? node.freehand?.color ?? "#111827")
         : (s.stroke ?? (shapeName === "text" ? "none" : "#6c8ebf")),
-    strokeWidth: s.strokeWidth ?? (kind === "freehand" ? Math.max(1, (node.freehand?.size ?? 2) / 2) : 1.5),
+    strokeWidth: s.strokeWidth ?? (kind === "freehand" ? Math.max(1, node.freehand?.size ?? 2) : 1.5),
     dashed: s.dashed ?? false,
     fontSize: s.fontSize ?? (kind === "freehand" ? 1 : 12),
     fontColor: s.fontColor ?? (kind === "freehand" ? "none" : "#333333"),
