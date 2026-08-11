@@ -1,6 +1,8 @@
 import {
   createContext,
+  useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type Dispatch,
@@ -8,22 +10,30 @@ import {
   type SetStateAction,
 } from "react";
 
-export type DiagramTool =
+/** Primary drawing / interaction tool (only one active). */
+export type DrawingTool =
   | "select"
-  | "table"
-  | "title"
-  | "text"
-  | "container"
-  | "shapes"
-  | "connector"
-  | "arrow"
+  | "pan"
   | "pen"
   | "brush"
+  | "pencil"
+  | "marker"
   | "eraser"
+  | "connector"
+  | "arrow"
+  | "shape-place";
+
+/** @deprecated Use DrawingTool — kept as alias for gradual migration */
+export type DiagramTool = DrawingTool | "table" | "text" | "shapes" | "ai" | "layout" | "themes" | "colors" | "export" | "title" | "container";
+
+export type ToolbarMenuId =
+  | "shapes"
+  | "table"
+  | "pen"
+  | "connector"
   | "layout"
-  | "colors"
   | "themes"
-  | "ai"
+  | "colors"
   | "export";
 
 export type PenOptions = { size: number; color: string; opacity: number };
@@ -34,23 +44,37 @@ export type TableOptions = {
   withContainer: boolean;
 };
 
+export type ConnectorStylePreset = {
+  edgeStyle: "orthogonal" | "straight" | "elbow";
+  curved: boolean;
+  endArrow: "classic" | "block" | "open" | "oval" | "diamond" | "none";
+  startArrow: "classic" | "block" | "open" | "oval" | "diamond" | "none";
+};
+
 type DiagramToolsContextValue = {
-  activeTool: DiagramTool;
-  setActiveTool: Dispatch<SetStateAction<DiagramTool>>;
+  activeTool: DrawingTool;
+  setActiveTool: Dispatch<SetStateAction<DrawingTool>>;
+  setDrawingTool: (tool: DrawingTool, opts?: { keepMenu?: boolean | ToolbarMenuId }) => void;
+  openMenu: ToolbarMenuId | null;
+  setOpenMenu: (id: ToolbarMenuId | null) => void;
+  toggleMenu: (id: ToolbarMenuId) => void;
+  closeMenu: () => void;
+  pendingShape: string | null;
+  setPendingShape: Dispatch<SetStateAction<string | null>>;
   pen: PenOptions;
   setPen: Dispatch<SetStateAction<PenOptions>>;
   brush: PenOptions;
   setBrush: Dispatch<SetStateAction<PenOptions>>;
   tableOpts: TableOptions;
   setTableOpts: Dispatch<SetStateAction<TableOptions>>;
-  shapesOpen: boolean;
-  setShapesOpen: Dispatch<SetStateAction<boolean>>;
-  layoutOpen: boolean;
-  setLayoutOpen: Dispatch<SetStateAction<boolean>>;
-  themesOpen: boolean;
-  setThemesOpen: Dispatch<SetStateAction<boolean>>;
+  connectorStyle: ConnectorStylePreset;
+  setConnectorStyle: Dispatch<SetStateAction<ConnectorStylePreset>>;
+  colorTarget: "fill" | "stroke";
+  setColorTarget: Dispatch<SetStateAction<"fill" | "stroke">>;
   aiOpen: boolean;
   setAiOpen: Dispatch<SetStateAction<boolean>>;
+  /** True when a drawing tool that should show the pen strip is active */
+  showPenStrip: boolean;
 };
 
 const DiagramToolsContext = createContext<DiagramToolsContextValue | null>(null);
@@ -63,45 +87,206 @@ const DEFAULT_TABLE: TableOptions = {
   withTitle: false,
   withContainer: false,
 };
+const DEFAULT_CONNECTOR: ConnectorStylePreset = {
+  edgeStyle: "orthogonal",
+  curved: false,
+  endArrow: "classic",
+  startArrow: "none",
+};
+
+const DRAWING_TOOLS = new Set<DrawingTool>([
+  "select",
+  "pan",
+  "pen",
+  "brush",
+  "pencil",
+  "marker",
+  "eraser",
+  "connector",
+  "arrow",
+  "shape-place",
+]);
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.isContentEditable) return true;
+  return Boolean(target.closest("[contenteditable='true']"));
+}
+
+function isDrawingTool(t: string): t is DrawingTool {
+  return DRAWING_TOOLS.has(t as DrawingTool);
+}
 
 export function DiagramToolsProvider({ children }: { children: ReactNode }) {
-  const [activeTool, setActiveTool] = useState<DiagramTool>("select");
+  const [activeTool, setActiveToolRaw] = useState<DrawingTool>("select");
+  const [openMenu, setOpenMenuState] = useState<ToolbarMenuId | null>(null);
+  const [pendingShape, setPendingShape] = useState<string | null>(null);
   const [pen, setPen] = useState<PenOptions>(DEFAULT_PEN);
   const [brush, setBrush] = useState<PenOptions>(DEFAULT_BRUSH);
   const [tableOpts, setTableOpts] = useState<TableOptions>(DEFAULT_TABLE);
-  const [shapesOpen, setShapesOpen] = useState(false);
-  const [layoutOpen, setLayoutOpen] = useState(false);
-  const [themesOpen, setThemesOpen] = useState(false);
+  const [connectorStyle, setConnectorStyle] = useState<ConnectorStylePreset>(DEFAULT_CONNECTOR);
+  const [colorTarget, setColorTarget] = useState<"fill" | "stroke">("fill");
   const [aiOpen, setAiOpen] = useState(false);
+
+  const setActiveTool = useCallback((action: SetStateAction<DrawingTool>) => {
+    setActiveToolRaw((prev) => {
+      const next = typeof action === "function" ? action(prev) : action;
+      return isDrawingTool(next) ? next : "select";
+    });
+  }, []);
+
+  const closeMenu = useCallback(() => setOpenMenuState(null), []);
+
+  const setOpenMenu = useCallback((id: ToolbarMenuId | null) => {
+    setOpenMenuState(id);
+  }, []);
+
+  const toggleMenu = useCallback((id: ToolbarMenuId) => {
+    setOpenMenuState((prev) => (prev === id ? null : id));
+  }, []);
+
+  const setDrawingTool = useCallback(
+    (tool: DrawingTool, opts?: { keepMenu?: boolean | ToolbarMenuId }) => {
+      setActiveToolRaw(tool);
+      if (opts?.keepMenu === true) {
+        // leave openMenu unchanged
+      } else if (typeof opts?.keepMenu === "string") {
+        setOpenMenuState(opts.keepMenu);
+      } else {
+        setOpenMenuState(null);
+      }
+      if (tool !== "shape-place") setPendingShape(null);
+    },
+    []
+  );
+
+  // Outside click closes menus
+  useEffect(() => {
+    if (!openMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      if (el.closest("[data-toolbar-menu]") || el.closest("[data-toolbar-trigger]")) return;
+      setOpenMenuState(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openMenu]);
+
+  // Esc closes menu or returns to select
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (openMenu) {
+          setOpenMenuState(null);
+          return;
+        }
+        setActiveToolRaw("select");
+        setPendingShape(null);
+        return;
+      }
+
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "z" && e.shiftKey) {
+        // redo handled by editor; don't steal here
+        return;
+      }
+
+      if (mod) {
+        if (e.key.toLowerCase() === "t" && e.shiftKey) {
+          e.preventDefault();
+          setOpenMenuState((prev) => (prev === "table" ? null : "table"));
+          return;
+        }
+        return;
+      }
+
+      const k = e.key.toLowerCase();
+      if (k === "v") {
+        e.preventDefault();
+        setDrawingTool("select");
+      } else if (k === "h") {
+        e.preventDefault();
+        setDrawingTool("pan");
+      } else if (k === "r") {
+        e.preventDefault();
+        setPendingShape("rectangle");
+        setActiveToolRaw("shape-place");
+        setOpenMenuState(null);
+      } else if (k === "t") {
+        e.preventDefault();
+        // text insert is editor-owned; emit via custom event
+        window.dispatchEvent(new CustomEvent("diagram-tool-insert-text"));
+        setDrawingTool("select");
+      } else if (k === "p") {
+        e.preventDefault();
+        setDrawingTool("pen");
+      } else if (k === "l") {
+        e.preventDefault();
+        setDrawingTool("connector");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openMenu, setDrawingTool]);
+
+  // Opening AI dock closes toolbar menus
+  useEffect(() => {
+    if (aiOpen) setOpenMenuState(null);
+  }, [aiOpen]);
+
+  const showPenStrip =
+    activeTool === "pen" ||
+    activeTool === "brush" ||
+    activeTool === "pencil" ||
+    activeTool === "marker" ||
+    activeTool === "eraser";
 
   const value = useMemo(
     () => ({
       activeTool,
       setActiveTool,
+      setDrawingTool,
+      openMenu,
+      setOpenMenu,
+      toggleMenu,
+      closeMenu,
+      pendingShape,
+      setPendingShape,
       pen,
       setPen,
       brush,
       setBrush,
       tableOpts,
       setTableOpts,
-      shapesOpen,
-      setShapesOpen,
-      layoutOpen,
-      setLayoutOpen,
-      themesOpen,
-      setThemesOpen,
+      connectorStyle,
+      setConnectorStyle,
+      colorTarget,
+      setColorTarget,
       aiOpen,
       setAiOpen,
+      showPenStrip,
     }),
     [
       activeTool,
+      setActiveTool,
+      setDrawingTool,
+      openMenu,
+      setOpenMenu,
+      toggleMenu,
+      closeMenu,
+      pendingShape,
       pen,
       brush,
       tableOpts,
-      shapesOpen,
-      layoutOpen,
-      themesOpen,
+      connectorStyle,
+      colorTarget,
       aiOpen,
+      showPenStrip,
     ]
   );
 
@@ -122,3 +307,5 @@ export function useDiagramTools() {
 export function useDiagramToolsOptional() {
   return useContext(DiagramToolsContext);
 }
+
+export { isTypingTarget };

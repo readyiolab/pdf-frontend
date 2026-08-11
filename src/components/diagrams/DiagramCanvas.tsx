@@ -36,11 +36,26 @@ import {
   type DiagramSettings,
   PAPER_SIZES,
 } from "@/lib/diagram/model";
-import type { ShapeDef } from "@/lib/diagram/shapes";
+import { allShapes, type ShapeDef } from "@/lib/diagram/shapes";
 import { getStrokeOutline, type StrokePoint } from "@/lib/diagram/freehand";
 import { cn } from "@/lib/utils";
 
-export type CanvasToolMode = "select" | "pen" | "brush" | "eraser" | "connector" | "arrow";
+export type CanvasToolMode =
+  | "select"
+  | "pan"
+  | "pen"
+  | "brush"
+  | "eraser"
+  | "connector"
+  | "arrow"
+  | "shape-place";
+
+export type DefaultEdgeStyle = {
+  edgeStyle: "orthogonal" | "straight" | "elbow";
+  curved: boolean;
+  endArrow: string;
+  startArrow: string;
+};
 
 export type LayoutKindCanvas =
   | "vertical-flow"
@@ -111,6 +126,50 @@ function clientToGraph(graph: Graph, host: HTMLElement, clientX: number, clientY
   };
 }
 
+function edgeStyleKey(kind: DefaultEdgeStyle["edgeStyle"]): string {
+  if (kind === "straight") return "none";
+  if (kind === "elbow") return "elbowEdgeStyle";
+  return "orthogonalEdgeStyle";
+}
+
+function applyDefaultEdgeStyle(graph: Graph, preset: DefaultEdgeStyle) {
+  const style = {
+    edgeStyle: edgeStyleKey(preset.edgeStyle),
+    endArrow: preset.endArrow === "none" ? undefined : preset.endArrow,
+    startArrow: preset.startArrow === "none" ? undefined : preset.startArrow,
+    strokeColor: "#64748b",
+    strokeWidth: 1.5,
+    rounded: preset.edgeStyle !== "straight",
+    curved: preset.curved,
+  } as CellStyle;
+  try {
+    graph.getStylesheet().putDefaultEdgeStyle(style);
+  } catch {
+    /* ignore */
+  }
+}
+
+function applyToolModeToGraph(
+  graph: Graph,
+  mode: CanvasToolMode,
+  opts: { readOnly: boolean; host: HTMLElement | null }
+) {
+  const drawing = mode === "pen" || mode === "brush" || mode === "eraser";
+  const connecting = mode === "connector" || mode === "arrow";
+  const panning = mode === "pan" || (!drawing && !connecting && mode !== "shape-place");
+  graph.setPanning(panning || mode === "pan");
+  const connectable = !opts.readOnly && (connecting || mode === "select");
+  graph.setConnectable(connectable && !drawing && mode !== "pan" && mode !== "shape-place");
+  const ch = graph.getPlugin("ConnectionHandler") as { setEnabled?: (v: boolean) => void } | null;
+  ch?.setEnabled?.(connectable && !drawing && mode !== "pan" && mode !== "shape-place");
+  if (opts.host) {
+    if (drawing || mode === "shape-place") opts.host.style.cursor = "crosshair";
+    else if (mode === "pan") opts.host.style.cursor = "grab";
+    else if (connecting) opts.host.style.cursor = "crosshair";
+    else opts.host.style.cursor = "";
+  }
+}
+
 export type SelectionInfo = {
   cells: Cell[];
   isEdge: boolean;
@@ -164,6 +223,8 @@ export type DiagramCanvasHandle = {
     style: { size: number; color: string; opacity: number; brush: "pen" | "brush" }
   ) => void;
   setToolMode: (mode: CanvasToolMode) => void;
+  setPendingShape: (shape: string | null) => void;
+  setDefaultEdgeStyle: (style: DefaultEdgeStyle) => void;
   setPenStyle: (style: {
     size: number;
     color: string;
@@ -197,11 +258,26 @@ type Props = {
   onDirty?: () => void;
   onSelectionChange?: (info: SelectionInfo | null) => void;
   onZoomChange?: (zoom: number) => void;
+  onShapePlaced?: () => void;
   readOnly?: boolean;
 };
 
+function resolveShapeDef(shapeName: string): ShapeDef {
+  const found = allShapes().find((s) => s.shape === shapeName || s.id === shapeName);
+  if (found) return found;
+  return {
+    id: shapeName,
+    label: shapeName === "text" ? "Text" : shapeName.charAt(0).toUpperCase() + shapeName.slice(1),
+    shape: shapeName,
+    w: 120,
+    h: shapeName === "text" ? 40 : 60,
+    category: "general",
+    preview: "rect",
+  };
+}
+
 export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function DiagramCanvas(
-  { className, settings, onDirty, onSelectionChange, onZoomChange, readOnly = false },
+  { className, settings, onDirty, onSelectionChange, onZoomChange, onShapePlaced, readOnly = false },
   ref
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -218,13 +294,24 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   const [hoverUi, setHoverUi] = useState<HoverUi | null>(null);
   const [paletteDir, setPaletteDir] = useState<Dir | null>(null);
   const [paletteHover, setPaletteHover] = useState<string | null>(null);
+  const [toolModeUi, setToolModeUi] = useState<CanvasToolMode>("select");
   const paletteDirRef = useRef<Dir | null>(null);
   paletteDirRef.current = paletteDir;
 
   const toolModeRef = useRef<CanvasToolMode>("select");
+  const pendingShapeRef = useRef<string | null>(null);
+  const defaultEdgeStyleRef = useRef<DefaultEdgeStyle>({
+    edgeStyle: "orthogonal",
+    curved: false,
+    endArrow: "classic",
+    startArrow: "none",
+  });
+  const onShapePlacedRef = useRef(onShapePlaced);
+  onShapePlacedRef.current = onShapePlaced;
   const penStyleRef = useRef({ size: 2, color: "#111827", opacity: 1, brush: "pen" as "pen" | "brush" });
   const freehandPtsRef = useRef<StrokePoint[]>([]);
   const freehandDrawingRef = useRef(false);
+  const connectingRef = useRef(false);
   const focusModeRef = useRef(false);
   const focusSeedRef = useRef<string[]>([]);
   const flowTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -255,12 +342,19 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   const updateHoverFromCell = useCallback((cell: Cell | null) => {
     const graph = graphRef.current;
     const root = rootRef.current;
+    const mode = toolModeRef.current;
+    // Quick-add / waypoint UI only in select (quick-add) or connector (waypoints)
+    if (mode !== "select" && mode !== "connector" && mode !== "arrow") {
+      setHoverUi(null);
+      setPaletteDir(null);
+      return;
+    }
     if (!graph || !root || !cell || !cell.isVertex() || readOnlyRef.current) {
       setHoverUi(null);
       setPaletteDir(null);
       return;
     }
-    if (settingsRef.current?.connectionArrows === false) {
+    if (settingsRef.current?.connectionArrows === false && mode === "select") {
       setHoverUi(null);
       setPaletteDir(null);
       return;
@@ -344,8 +438,65 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       mouseDown: (_sender: unknown, me: { getCell: () => Cell | null; getEvent: () => MouseEvent }) => {
         if (readOnlyRef.current) return;
         const mode = toolModeRef.current;
-        if (mode !== "pen" && mode !== "brush" && mode !== "eraser") return;
         const evt = me.getEvent();
+
+        if (mode === "shape-place" && pendingShapeRef.current) {
+          const shapeName = pendingShapeRef.current;
+          const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
+          const def = resolveShapeDef(shapeName);
+          const w = def.w ?? 120;
+          const h = def.h ?? 60;
+          const grid = graph.getGridSize();
+          const x = snapToGrid(pt.x - w / 2, grid);
+          const y = snapToGrid(pt.y - h / 2, grid);
+          const style: CellStyle = {
+            shape:
+              def.shape === "rounded" || def.shape === "process"
+                ? "rectangle"
+                : (def.shape as CellStyle["shape"]),
+            rounded: def.shape === "rounded" || def.shape === "process",
+            fillColor: "#dae8fc",
+            strokeColor: "#6c8ebf",
+            strokeWidth: 1.5,
+            fontSize: 12,
+            fontColor: "#333333",
+            whiteSpace: "wrap",
+          };
+          if (def.shape === "diamond" || def.shape === "decision") style.shape = "rhombus";
+          if (def.shape === "circle" || def.shape === "terminator") style.shape = "ellipse";
+          if (def.shape === "text") {
+            style.fillColor = "none";
+            style.strokeColor = "none";
+          }
+          graph.getDataModel().beginUpdate();
+          try {
+            const cell = graph.insertVertex({
+              parent: graph.getDefaultParent(),
+              id: crypto.randomUUID(),
+              value: def.shape === "text" ? "Text" : "",
+              position: [x, y],
+              size: [w, h],
+              style,
+            });
+            graph.setSelectionCell(cell);
+          } finally {
+            graph.getDataModel().endUpdate();
+          }
+          pendingShapeRef.current = null;
+          toolModeRef.current = "select";
+          setToolModeUi("select");
+          applyToolModeToGraph(graph, "select", { readOnly: readOnlyRef.current, host });
+          onDirtyRef.current?.();
+          onShapePlacedRef.current?.();
+          evt.preventDefault?.();
+          return;
+        }
+
+        if (mode === "connector" || mode === "arrow") {
+          connectingRef.current = true;
+        }
+
+        if (mode !== "pen" && mode !== "brush" && mode !== "eraser") return;
         if (mode === "eraser") {
           const cell = me.getCell();
           if (cell?.isVertex() && parseKindFromValue(cell.getValue()) === "freehand") {
@@ -361,6 +512,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         me.getEvent().preventDefault?.();
       },
       mouseUp: () => {
+        connectingRef.current = false;
         if (!freehandDrawingRef.current) return;
         freehandDrawingRef.current = false;
         const pts = freehandPtsRef.current;
@@ -438,7 +590,23 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           return;
         }
         if (paletteDirRef.current) return;
-        if (toolModeRef.current !== "select") return;
+        const mode = toolModeRef.current;
+        if (mode !== "select" && mode !== "connector" && mode !== "arrow") {
+          setHoverUi(null);
+          setPaletteDir(null);
+          return;
+        }
+        // In connector mode, only show waypoints while hovering a vertex (or connecting)
+        if ((mode === "connector" || mode === "arrow") && !connectingRef.current) {
+          const cell = me.getCell();
+          if (cell?.isVertex()) updateHoverFromCell(cell);
+          else {
+            setHoverUi(null);
+            setPaletteDir(null);
+          }
+          return;
+        }
+        if (mode !== "select") return;
         const cell = me.getCell();
         if (cell?.isVertex()) updateHoverFromCell(cell);
         else if (!graph.getSelectionCells().some((c) => c.isVertex())) {
@@ -1091,18 +1259,28 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     setToolMode: (mode) => {
       toolModeRef.current = mode;
+      setToolModeUi(mode);
       const graph = graphRef.current;
       if (!graph) return;
-      const drawing = mode === "pen" || mode === "brush" || mode === "eraser";
-      graph.setPanning(!drawing);
-      const connectable = !readOnlyRef.current && (mode === "connector" || mode === "arrow" || mode === "select");
-      graph.setConnectable(connectable && !drawing);
-      const ch = graph.getPlugin("ConnectionHandler") as { setEnabled?: (v: boolean) => void } | null;
-      ch?.setEnabled?.(connectable && !drawing);
-      if (drawing) {
+      applyToolModeToGraph(graph, mode, { readOnly: readOnlyRef.current, host: hostRef.current });
+      if (mode !== "select") {
+        setPaletteDir(null);
+      }
+      if (mode !== "select" && mode !== "connector" && mode !== "arrow") {
         setHoverUi(null);
         setPaletteDir(null);
       }
+      if (mode === "connector" || mode === "arrow") {
+        applyDefaultEdgeStyle(graph, defaultEdgeStyleRef.current);
+      }
+    },
+    setPendingShape: (shape) => {
+      pendingShapeRef.current = shape;
+    },
+    setDefaultEdgeStyle: (style) => {
+      defaultEdgeStyleRef.current = style;
+      const graph = graphRef.current;
+      if (graph) applyDefaultEdgeStyle(graph, style);
     },
     setPenStyle: (style) => {
       penStyleRef.current = {
@@ -1417,7 +1595,10 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       />
       <div ref={hostRef} className="absolute inset-0 min-h-full min-w-full" />
 
-      {hoverUi && !readOnly && settings?.connectionArrows !== false && (
+      {hoverUi &&
+        !readOnly &&
+        (toolModeUi === "select" || toolModeUi === "connector" || toolModeUi === "arrow") &&
+        (toolModeUi !== "select" || settings?.connectionArrows !== false) && (
         <div
           className="pointer-events-none absolute z-20"
           style={{
@@ -1436,25 +1617,33 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
                   : dir === "e"
                     ? { left: "100%", top: "50%", transform: "translate(30%, -50%)" }
                     : { left: 0, top: "50%", transform: "translate(-130%, -50%)" };
+            const connectorMode = toolModeUi === "connector" || toolModeUi === "arrow";
             return (
               <button
                 key={dir}
                 type="button"
-                title="Add connected shape"
-                className="pointer-events-auto absolute flex size-5 items-center justify-center rounded-sm bg-[#93c5fd]/80 text-[10px] text-[#1e3a8a] shadow-sm hover:bg-[#60a5fa]"
+                title={connectorMode ? "Connection point" : "Add connected shape"}
+                className={cn(
+                  "pointer-events-auto absolute flex items-center justify-center shadow-sm",
+                  connectorMode
+                    ? "size-2.5 rounded-full border-2 border-white bg-[#3b82f6]"
+                    : "size-5 rounded-sm bg-[#93c5fd]/80 text-[10px] text-[#1e3a8a] hover:bg-[#60a5fa]"
+                )}
                 style={pos}
-                onMouseEnter={() => setPaletteDir(dir)}
+                onMouseEnter={() => {
+                  if (!connectorMode) setPaletteDir(dir);
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setPaletteDir(dir);
+                  if (!connectorMode) setPaletteDir(dir);
                 }}
               >
-                {dir === "n" ? "▲" : dir === "s" ? "▼" : dir === "e" ? "▶" : "◀"}
+                {connectorMode ? null : dir === "n" ? "▲" : dir === "s" ? "▼" : dir === "e" ? "▶" : "◀"}
               </button>
             );
           })}
 
-          {paletteDir && (
+          {paletteDir && toolModeUi === "select" && (
             <div
               className="pointer-events-auto absolute z-30 flex items-start gap-1"
               style={

@@ -23,6 +23,7 @@ import { PresentBar } from "@/components/diagrams/PresentBar";
 import {
   DiagramToolsProvider,
   useDiagramTools,
+  isTypingTarget,
 } from "@/components/diagrams/DiagramToolsContext";
 import { ShareDialog } from "@/components/diagrams/ShareDialog";
 import { PageSetupDialog } from "@/components/diagrams/PageSetupDialog";
@@ -117,21 +118,50 @@ function DiagramEditorInner() {
   // Sync tool mode + pen style into canvas
   useEffect(() => {
     const tool = tools.activeTool;
-    const mode =
-      tool === "pen" || tool === "brush" || tool === "eraser" || tool === "connector" || tool === "arrow"
-        ? tool
-        : "select";
+    let mode: "select" | "pan" | "pen" | "brush" | "eraser" | "connector" | "arrow" | "shape-place" =
+      "select";
+    if (tool === "pencil") mode = "pen";
+    else if (tool === "marker") mode = "brush";
+    else if (
+      tool === "pen" ||
+      tool === "brush" ||
+      tool === "eraser" ||
+      tool === "connector" ||
+      tool === "arrow" ||
+      tool === "pan" ||
+      tool === "shape-place"
+    ) {
+      mode = tool;
+    }
     canvasRef.current?.setToolMode(mode);
-    if (tool === "pen") {
+    canvasRef.current?.setPendingShape(tools.pendingShape);
+    if (tool === "pen" || tool === "pencil") {
       canvasRef.current?.setPenStyle({ ...tools.pen, brush: "pen" });
-    } else if (tool === "brush") {
+    } else if (tool === "brush" || tool === "marker") {
       canvasRef.current?.setPenStyle({ ...tools.brush, brush: "brush" });
     }
-  }, [tools.activeTool, tools.pen, tools.brush]);
+  }, [tools.activeTool, tools.pen, tools.brush, tools.pendingShape]);
 
   useEffect(() => {
-    if (tools.shapesOpen) setShapesPanelOpen(true);
-  }, [tools.shapesOpen]);
+    canvasRef.current?.setDefaultEdgeStyle(tools.connectorStyle);
+  }, [tools.connectorStyle]);
+
+  useEffect(() => {
+    const onInsertText = () => {
+      canvasRef.current?.addShape({
+        id: "text",
+        label: "Text",
+        shape: "text",
+        w: 120,
+        h: 40,
+        category: "general",
+        preview: "rect",
+      });
+      setDirty(true);
+    };
+    window.addEventListener("diagram-tool-insert-text", onInsertText);
+    return () => window.removeEventListener("diagram-tool-insert-text", onInsertText);
+  }, []);
 
   // Bootstrap + load
   useEffect(() => {
@@ -259,6 +289,7 @@ function DiagramEditorInner() {
   // Ctrl+S and shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
       const mod = e.ctrlKey || e.metaKey;
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -313,14 +344,15 @@ function DiagramEditorInner() {
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable)
-          return;
         e.preventDefault();
         canvas.deleteSelection();
       }
       if (e.key === "Escape") {
-        canvas.clearSelection();
+        // Tool state Esc is handled by DiagramToolsProvider; only clear selection here
+        // when already in select mode (provider will have switched first on same event)
+        if (tools.activeTool === "select" && !tools.openMenu) {
+          canvas.clearSelection();
+        }
         if (presentOpen) {
           canvas.pauseFlow();
           setPresentOpen(false);
@@ -328,8 +360,6 @@ function DiagramEditorInner() {
         }
       }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
         const map: Record<string, [number, number]> = {
@@ -344,7 +374,7 @@ function DiagramEditorInner() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [save, setAiOpen, presentOpen]);
+  }, [save, setAiOpen, presentOpen, tools.activeTool, tools.openMenu]);
 
   useEffect(() => {
     const onBefore = (e: BeforeUnloadEvent) => {
@@ -843,7 +873,7 @@ function DiagramEditorInner() {
       label: "Edit",
       items: [
         { type: "item" as const, label: "Undo", shortcut: "Ctrl+Z", onClick: () => canvasRef.current?.undo() },
-        { type: "item" as const, label: "Redo", shortcut: "Ctrl+Y", onClick: () => canvasRef.current?.redo() },
+        { type: "item" as const, label: "Redo", shortcut: "Ctrl+Shift+Z", onClick: () => canvasRef.current?.redo() },
         { type: "sep" as const },
         { type: "item" as const, label: "Cut", shortcut: "Ctrl+X", onClick: () => canvasRef.current?.cut() },
         { type: "item" as const, label: "Copy", shortcut: "Ctrl+C", onClick: () => canvasRef.current?.copy() },
@@ -992,7 +1022,7 @@ function DiagramEditorInner() {
           label: "Keyboard shortcuts",
           onClick: () =>
             alert(
-              "Ctrl+S Save · Ctrl+/ AI · F5 Present · Ctrl+Z/Y Undo/Redo · Ctrl+C/X/V/D · Delete · Arrows nudge · Ctrl+wheel zoom"
+                  "Ctrl+S Save · Ctrl+/ AI · F5 Present · Ctrl+Z / Ctrl+Shift+Z Undo/Redo · Ctrl+C/X/V/D · Delete · Arrows nudge · Ctrl+wheel zoom"
             ),
         },
       ],
@@ -1098,23 +1128,6 @@ function DiagramEditorInner() {
           canvasRef.current?.insertContainer("Container");
           setDirty(true);
         }}
-        onInsertShape={(shape) => {
-          if (shape === "rectangle") {
-            canvasRef.current?.addShape({
-              id: "rect",
-              label: "Rectangle",
-              shape: "rectangle",
-              w: 120,
-              h: 60,
-              category: "general",
-              preview: "rect",
-            });
-            setDirty(true);
-          } else {
-            setShapesPanelOpen(true);
-            tools.setShapesOpen(true);
-          }
-        }}
         onApplyTheme={applyTheme}
         onToggleShapesPanel={() => setShapesPanelOpen((v) => !v)}
         onToggleFormatPanel={() => setFormatPanelOpen((v) => !v)}
@@ -1191,6 +1204,11 @@ function DiagramEditorInner() {
             onDirty={markDirty}
             onSelectionChange={onSelectionChange}
             onZoomChange={setZoom}
+            onShapePlaced={() => {
+              tools.setDrawingTool("select");
+              tools.setPendingShape(null);
+              setDirty(true);
+            }}
           />
 
           <SelectionToolbar
@@ -1198,7 +1216,7 @@ function DiagramEditorInner() {
             x={(selBounds?.x ?? 0) + (selBounds?.w ?? 0) / 2}
             y={selBounds?.y ?? 0}
             onConnect={() => {
-              tools.setActiveTool("connector");
+              tools.setDrawingTool("connector");
               canvasRef.current?.setToolMode("connector");
             }}
             onDuplicate={() => canvasRef.current?.duplicate()}
