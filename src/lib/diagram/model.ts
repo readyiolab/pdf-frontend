@@ -15,6 +15,7 @@ export const nodeStyleSchema = z.object({
   opacity: z.number().optional(),
   align: z.string().optional(),
   verticalAlign: z.string().optional(),
+  rotation: z.number().optional(),
 });
 
 export const edgeStyleSchema = z.object({
@@ -27,6 +28,11 @@ export const edgeStyleSchema = z.object({
   curved: z.boolean().optional(),
   fontSize: z.number().optional(),
   fontColor: z.string().optional(),
+  exitX: z.number().optional(),
+  exitY: z.number().optional(),
+  entryX: z.number().optional(),
+  entryY: z.number().optional(),
+  points: z.array(z.tuple([z.number(), z.number()])).optional(),
 });
 
 export const diagramNodeSchema = z.object({
@@ -55,6 +61,26 @@ export const diagramPageSchema = z.object({
   edges: z.array(diagramEdgeSchema).default([]),
 });
 
+export const paperEnum = z.enum([
+  "a0",
+  "a1",
+  "a2",
+  "a3",
+  "a4-portrait",
+  "a4-landscape",
+  "a5",
+  "a6",
+  "a7",
+  "letter",
+  "legal",
+  "tabloid",
+  "executive",
+  "widescreen-16-9",
+  "widescreen-16-10",
+  "standard-4-3",
+  "custom",
+]);
+
 export const diagramDocumentSchema = z.object({
   version: z.literal(1).default(1),
   pages: z.array(diagramPageSchema).min(1),
@@ -67,7 +93,7 @@ export const diagramDocumentSchema = z.object({
       connectionArrows: z.boolean().optional(),
       connectionPoints: z.boolean().optional(),
       guides: z.boolean().optional(),
-      paper: z.enum(["a4-portrait", "a4-landscape", "letter", "custom"]).optional(),
+      paper: paperEnum.optional(),
       pageWidth: z.number().optional(),
       pageHeight: z.number().optional(),
     })
@@ -83,10 +109,25 @@ export type DiagramDocument = z.infer<typeof diagramDocumentSchema>;
 export type DiagramSettings = NonNullable<DiagramDocument["settings"]>;
 
 export const PAPER_SIZES = {
-  "a4-portrait": { w: 794, h: 1123 },
-  "a4-landscape": { w: 1123, h: 794 },
-  letter: { w: 816, h: 1056 },
+  a0: { w: 3179, h: 4494, label: "A0" },
+  a1: { w: 2245, h: 3179, label: "A1" },
+  a2: { w: 1587, h: 2245, label: "A2" },
+  a3: { w: 1123, h: 1587, label: "A3" },
+  "a4-portrait": { w: 794, h: 1123, label: 'A4 (210 mm × 297 mm)' },
+  "a4-landscape": { w: 1123, h: 794, label: "A4 Landscape" },
+  a5: { w: 559, h: 794, label: "A5" },
+  a6: { w: 397, h: 559, label: "A6" },
+  a7: { w: 280, h: 397, label: "A7" },
+  letter: { w: 816, h: 1056, label: 'US-Letter (8.5" × 11")' },
+  legal: { w: 816, h: 1344, label: 'US-Legal (8.5" × 14")' },
+  tabloid: { w: 1056, h: 1632, label: 'US-Tabloid (11" × 17")' },
+  executive: { w: 696, h: 1008, label: 'US-Executive (7.25" × 10.5")' },
+  "widescreen-16-9": { w: 1600, h: 900, label: "16:9 (1600 × 900)" },
+  "widescreen-16-10": { w: 1920, h: 1200, label: "16:10 (1920 × 1200)" },
+  "standard-4-3": { w: 1600, h: 1200, label: "4:3 (1600 × 1200)" },
 } as const;
+
+export type PaperKey = keyof typeof PAPER_SIZES;
 
 export function emptyDocument(_title = "Untitled Diagram"): DiagramDocument {
   return {
@@ -157,6 +198,7 @@ function nodeToCellStyle(node: DiagramNode): CellStyle {
     align: (s.align as CellStyle["align"]) ?? "center",
     verticalAlign: (s.verticalAlign as CellStyle["verticalAlign"]) ?? "middle",
     whiteSpace: "wrap",
+    ...(typeof s.rotation === "number" ? { rotation: s.rotation } : {}),
   };
 }
 
@@ -181,6 +223,10 @@ function edgeToCellStyle(edge: DiagramEdge): CellStyle {
     fontSize: s.fontSize ?? 11,
     fontColor: s.fontColor ?? "#475569",
     rounded: true,
+    ...(typeof s.exitX === "number" ? { exitX: s.exitX } : {}),
+    ...(typeof s.exitY === "number" ? { exitY: s.exitY } : {}),
+    ...(typeof s.entryX === "number" ? { entryX: s.entryX } : {}),
+    ...(typeof s.entryY === "number" ? { entryY: s.entryY } : {}),
   };
 }
 
@@ -220,6 +266,14 @@ export function toMaxGraph(graph: Graph, page: DiagramPage): void {
         style: edgeToCellStyle(edge),
       });
       cell.setId(edge.id);
+      const pts = edge.style?.points;
+      if (pts?.length) {
+        const geo = cell.getGeometry()?.clone();
+        if (geo) {
+          geo.points = pts.map(([x, y]) => ({ x, y } as never));
+          cell.setGeometry(geo);
+        }
+      }
     }
   } finally {
     model.endUpdate();
@@ -262,6 +316,7 @@ export function fromMaxGraph(graph: Graph, pageMeta: Pick<DiagramPage, "id" | "n
         rounded: Boolean(style.rounded),
         shadow: Boolean(style.shadow),
         opacity: style.opacity as number | undefined,
+        rotation: typeof style.rotation === "number" ? style.rotation : undefined,
       },
     };
   });
@@ -277,6 +332,9 @@ export function fromMaxGraph(graph: Graph, pageMeta: Pick<DiagramPage, "id" | "n
       if (es === "none" || !es) edgeStyle = "straight";
       else if (es.includes("entityRelation")) edgeStyle = "entityRelation";
       else if (es.includes("elbow")) edgeStyle = "elbow";
+      const geo = cell.getGeometry();
+      const points =
+        geo?.points?.map((p) => [p.x, p.y] as [number, number]).filter(Boolean) ?? undefined;
       return {
         id: cell.getId() || crypto.randomUUID(),
         source: source.getId() || "",
@@ -292,6 +350,11 @@ export function fromMaxGraph(graph: Graph, pageMeta: Pick<DiagramPage, "id" | "n
           curved: Boolean(style.curved),
           fontSize: style.fontSize as number | undefined,
           fontColor: style.fontColor as string | undefined,
+          exitX: typeof style.exitX === "number" ? style.exitX : undefined,
+          exitY: typeof style.exitY === "number" ? style.exitY : undefined,
+          entryX: typeof style.entryX === "number" ? style.entryX : undefined,
+          entryY: typeof style.entryY === "number" ? style.entryY : undefined,
+          points: points?.length ? points : undefined,
         },
       } satisfies DiagramEdge;
     })

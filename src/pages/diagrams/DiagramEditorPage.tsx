@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { UserPlus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { DiagramCanvas, type DiagramCanvasHandle, type SelectionInfo } from "@/components/diagrams/DiagramCanvas";
@@ -11,9 +12,11 @@ import { DiagramToolbar } from "@/components/diagrams/Toolbar";
 import { PageTabs } from "@/components/diagrams/PageTabs";
 import { AiPanel } from "@/components/diagrams/AiPanel";
 import { ShareDialog } from "@/components/diagrams/ShareDialog";
+import { PageSetupDialog } from "@/components/diagrams/PageSetupDialog";
 import {
   emptyDocument,
   emptyPage,
+  PAPER_SIZES,
   type DiagramDocument,
   type DiagramPage,
   type DiagramSettings,
@@ -31,6 +34,7 @@ import type { CellStyle } from "@maxgraph/core";
 export default function DiagramEditorPage() {
   const { id: routeId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isNew = !routeId || routeId === "new";
 
   const canvasRef = useRef<DiagramCanvasHandle>(null);
@@ -47,9 +51,11 @@ export default function DiagramEditorPage() {
   const [zoom, setZoom] = useState(1);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiMode, setAiMode] = useState<"generate" | "edit" | "image">("generate");
   const loadedRef = useRef(false);
+  const pageQueryApplied = useRef(false);
 
   const settings: DiagramSettings = doc.settings ?? {};
   const activePage = useMemo(
@@ -310,6 +316,50 @@ export default function DiagramEditorPage() {
     setDirty(true);
   };
 
+  const sortPages = () => {
+    const nextDoc = syncActivePageFromCanvas();
+    const pages = [...nextDoc.pages].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+    );
+    setDoc({ ...nextDoc, pages });
+    setDirty(true);
+  };
+
+  const movePage = (id: string, dir: "left" | "right") => {
+    const nextDoc = syncActivePageFromCanvas();
+    const idx = nextDoc.pages.findIndex((p) => p.id === id);
+    if (idx < 0) return;
+    const swap = dir === "left" ? idx - 1 : idx + 1;
+    if (swap < 0 || swap >= nextDoc.pages.length) return;
+    const pages = [...nextDoc.pages];
+    [pages[idx], pages[swap]] = [pages[swap]!, pages[idx]!];
+    setDoc({ ...nextDoc, pages });
+    setDirty(true);
+  };
+
+  const openPageInNewWindow = (id: string) => {
+    if (!diagramId) {
+      toast.error("Save the diagram first");
+      return;
+    }
+    const url = `${window.location.origin}/diagrams/${diagramId}?page=${encodeURIComponent(id)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  // Apply ?page= deep link once after load
+  useEffect(() => {
+    if (loading || pageQueryApplied.current) return;
+    const pageId = searchParams.get("page");
+    if (!pageId) {
+      pageQueryApplied.current = true;
+      return;
+    }
+    if (doc.pages.some((p) => p.id === pageId)) {
+      setActivePageId(pageId);
+    }
+    pageQueryApplied.current = true;
+  }, [loading, searchParams, doc.pages]);
+
   const addShape = (shape: ShapeDef) => {
     canvasRef.current?.addShape(shape);
     setDirty(true);
@@ -333,7 +383,17 @@ export default function DiagramEditorPage() {
   };
 
   const applySettings = (patch: Partial<DiagramSettings>) => {
-    setDoc((d) => ({ ...d, settings: { ...d.settings, ...patch } }));
+    setDoc((d) => {
+      const next = { ...d.settings, ...patch };
+      if (patch.paper && patch.paper !== "custom") {
+        const size = PAPER_SIZES[patch.paper as keyof typeof PAPER_SIZES];
+        if (size) {
+          next.pageWidth = size.w;
+          next.pageHeight = size.h;
+        }
+      }
+      return { ...d, settings: next };
+    });
     setDirty(true);
   };
 
@@ -374,6 +434,8 @@ export default function DiagramEditorPage() {
             navigate(`/diagrams/${diagram.id}`);
           },
         },
+        { type: "sep" as const },
+        { type: "item" as const, label: "Page Setup…", onClick: () => setPageSetupOpen(true) },
         { type: "sep" as const },
         { type: "item" as const, label: "Export as PNG…", onClick: () => void doExport("png") },
         { type: "item" as const, label: "Export as SVG…", onClick: () => void doExport("svg") },
@@ -593,6 +655,7 @@ export default function DiagramEditorPage() {
           onSettingsChange={applySettings}
           selection={selection}
           onApplyStyle={applyStyle}
+          onOpenPageSetup={() => setPageSetupOpen(true)}
         />
       </div>
 
@@ -605,6 +668,19 @@ export default function DiagramEditorPage() {
         onRemove={removePage}
         onDuplicate={duplicatePage}
         onDeleteAll={deleteAllPages}
+        onSort={sortPages}
+        onMove={movePage}
+        onOpenInNewWindow={openPageInNewWindow}
+      />
+
+      <PageSetupDialog
+        open={pageSetupOpen}
+        settings={settings}
+        onClose={() => setPageSetupOpen(false)}
+        onApply={(patch) => {
+          applySettings(patch);
+          setPageSetupOpen(false);
+        }}
       />
 
       {orgId && diagramId && (

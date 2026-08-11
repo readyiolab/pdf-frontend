@@ -20,6 +20,7 @@ type Props = {
   onSettingsChange: (patch: Partial<DiagramSettings>) => void;
   selection: SelectionInfo | null;
   onApplyStyle: (patch: Partial<CellStyle>) => void;
+  onOpenPageSetup?: () => void;
   className?: string;
 };
 
@@ -28,6 +29,7 @@ export function FormatPanel({
   onSettingsChange,
   selection,
   onApplyStyle,
+  onOpenPageSetup,
   className,
 }: Props) {
   const style = selection?.style ?? {};
@@ -111,6 +113,15 @@ export function FormatPanel({
 
           <section className="space-y-2">
             <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">Paper Size</h3>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-full rounded-md text-xs"
+              onClick={() => onOpenPageSetup?.()}
+            >
+              Page Setup…
+            </Button>
             <Select
               value={settings.paper ?? "a4-portrait"}
               onValueChange={(v) => onSettingsChange({ paper: v as DiagramSettings["paper"] })}
@@ -121,7 +132,10 @@ export function FormatPanel({
               <SelectContent>
                 <SelectItem value="a4-portrait">A4 Portrait</SelectItem>
                 <SelectItem value="a4-landscape">A4 Landscape</SelectItem>
-                <SelectItem value="letter">Letter</SelectItem>
+                <SelectItem value="letter">US-Letter</SelectItem>
+                <SelectItem value="legal">US-Legal</SelectItem>
+                <SelectItem value="widescreen-16-9">16:9</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
               </SelectContent>
             </Select>
           </section>
