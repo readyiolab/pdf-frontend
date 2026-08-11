@@ -108,3 +108,85 @@ export function strokeToSvgPath(points: StrokePoint[], size: number): string {
   d += " Z";
   return d;
 }
+
+function dist2(ax: number, ay: number, bx: number, by: number) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
+}
+
+/** Minimum distance from point P to segment AB. */
+function pointToSegmentDistance(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const len2 = abx * abx + aby * aby;
+  if (len2 < 1e-8) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * abx + (py - ay) * aby) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * abx), py - (ay + t * aby));
+}
+
+function pointNearEraser(p: StrokePoint, eraserPts: StrokePoint[], radius: number): boolean {
+  const r2 = radius * radius;
+  for (const e of eraserPts) {
+    if (dist2(p.x, p.y, e.x, e.y) <= r2) return true;
+  }
+  // Also check distance to eraser path segments for denser coverage
+  for (let i = 1; i < eraserPts.length; i++) {
+    const a = eraserPts[i - 1]!;
+    const b = eraserPts[i]!;
+    if (pointToSegmentDistance(p.x, p.y, a.x, a.y, b.x, b.y) <= radius) return true;
+  }
+  return false;
+}
+
+/**
+ * Erase portions of a polyline within `radius` of any eraser sample.
+ * Returns kept contiguous runs (each with ≥2 points). Empty array = fully erased.
+ */
+export function erasePolylineByRadius(
+  points: StrokePoint[],
+  eraserPts: StrokePoint[],
+  radius: number
+): StrokePoint[][] {
+  if (!points.length) return [];
+  if (!eraserPts.length || radius <= 0) return [points.slice()];
+
+  const keepFlags = points.map((p) => !pointNearEraser(p, eraserPts, radius));
+
+  // Also erase segment midpoints that pass through the eraser (dense strokes)
+  for (let i = 0; i < points.length - 1; i++) {
+    if (!keepFlags[i] && !keepFlags[i + 1]) continue;
+    const a = points[i]!;
+    const b = points[i + 1]!;
+    for (const e of eraserPts) {
+      if (pointToSegmentDistance(e.x, e.y, a.x, a.y, b.x, b.y) <= radius) {
+        // Mark both endpoints of a hit segment so the segment is dropped
+        keepFlags[i] = false;
+        keepFlags[i + 1] = false;
+        break;
+      }
+    }
+  }
+
+  const runs: StrokePoint[][] = [];
+  let cur: StrokePoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    if (keepFlags[i]) {
+      cur.push(points[i]!);
+    } else if (cur.length) {
+      if (cur.length >= 2) runs.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length >= 2) runs.push(cur);
+  return runs;
+}
+

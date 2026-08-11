@@ -41,7 +41,7 @@ import {
   PAPER_SIZES,
 } from "@/lib/diagram/model";
 import { allShapes, type ShapeDef } from "@/lib/diagram/shapes";
-import { type StrokePoint } from "@/lib/diagram/freehand";
+import { type StrokePoint, erasePolylineByRadius } from "@/lib/diagram/freehand";
 import { CUSTOM_SHAPE, registerDiagramCustomShapes } from "@/lib/diagram/customShapes";
 import { cn } from "@/lib/utils";
 
@@ -102,23 +102,6 @@ const CARDINAL_CONSTRAINTS = [
   new ConnectionConstraint(new Point(0, 0.5), true, "W"),
 ];
 
-function parseKindFromValue(raw: unknown): string {
-  if (raw == null) return "shape";
-  if (typeof raw === "object" && raw !== null && "kind" in raw) {
-    return String((raw as { kind: string }).kind);
-  }
-  const str = String(raw);
-  if (str.startsWith("{")) {
-    try {
-      const p = JSON.parse(str) as { kind?: string };
-      if (p?.kind) return p.kind;
-    } catch {
-      /* ignore */
-    }
-  }
-  return "shape";
-}
-
 function snapToGrid(n: number, grid: number) {
   return Math.round(n / grid) * grid;
 }
@@ -131,6 +114,193 @@ function clientToGraph(graph: Graph, host: HTMLElement, clientX: number, clientY
     x: (clientX - rect.left) / scale - tr.x,
     y: (clientY - rect.top) / scale - tr.y,
   };
+}
+
+type FreehandStyle = {
+  size: number;
+  color: string;
+  opacity: number;
+  brush: "pen" | "brush";
+};
+
+function freehandStyleFromCell(cell: Cell): FreehandStyle {
+  const parsed = parseCellValue(cell.getValue());
+  const style = cell.getStyle() ?? {};
+  return {
+    size: parsed.freehand?.size ?? (typeof style.strokeWidth === "number" ? style.strokeWidth : 2),
+    color: parsed.freehand?.color ?? (typeof style.strokeColor === "string" ? style.strokeColor : "#111827"),
+    opacity: parsed.freehand?.opacity ?? 1,
+    brush: parsed.freehand?.brush === "brush" ? "brush" : "pen",
+  };
+}
+
+function pointsFromFreehandCell(cell: Cell): StrokePoint[] {
+  const parsed = parseCellValue(cell.getValue());
+  const pts = parsed.freehand?.points;
+  if (!pts?.length) return [];
+  return pts.map((p) => ({
+    x: p[0]!,
+    y: p[1]!,
+    pressure: p[2] ?? 0.5,
+  }));
+}
+
+function insertFreehandVertex(
+  graph: Graph,
+  graphPts: StrokePoint[],
+  style: FreehandStyle
+): Cell | null {
+  if (graphPts.length < 2) return null;
+  const xs = graphPts.map((p) => p.x);
+  const ys = graphPts.map((p) => p.y);
+  const pad = style.size + 4;
+  const minX = Math.min(...xs) - pad;
+  const minY = Math.min(...ys) - pad;
+  const maxX = Math.max(...xs) + pad;
+  const maxY = Math.max(...ys) + pad;
+  const relPts = graphPts.map(
+    (p) => [p.x - minX, p.y - minY, p.pressure ?? 0.5] as [number, number, number]
+  );
+  const payload = JSON.stringify({
+    kind: "freehand",
+    label: "",
+    freehand: {
+      points: relPts,
+      size: style.size,
+      color: style.color,
+      opacity: style.opacity,
+      brush: style.brush,
+    },
+  });
+  return graph.insertVertex({
+    parent: graph.getDefaultParent(),
+    id: crypto.randomUUID(),
+    value: payload,
+    position: [minX, minY],
+    size: [Math.max(8, maxX - minX), Math.max(8, maxY - minY)],
+    style: {
+      shape: CUSTOM_SHAPE.freehand,
+      fillColor: "none",
+      strokeColor: style.color,
+      strokeWidth: Math.max(1, style.size),
+      opacity: Math.round(style.opacity * 100),
+      fontSize: 1,
+      fontColor: "none",
+      diagramKind: "freehand",
+      editable: false,
+    } as CellStyle,
+  });
+}
+
+/** Apply eraser samples (graph coords) to nearby freehand cells; mutates graph. */
+function applyEraserToFreehand(
+  graph: Graph,
+  eraserGraphPts: StrokePoint[],
+  radius: number
+): boolean {
+  if (!eraserGraphPts.length || radius <= 0) return false;
+  let changed = false;
+  const parent = graph.getDefaultParent();
+  const vertices = graph.getChildVertices(parent);
+
+  graph.getDataModel().beginUpdate();
+  try {
+    for (const cell of vertices) {
+      if (!cell.isVertex()) continue;
+      if (parseCellValue(cell.getValue()).kind !== "freehand") continue;
+      const geo = cell.getGeometry();
+      if (!geo) continue;
+      const style = freehandStyleFromCell(cell);
+      const eraseR = radius + style.size / 2;
+      const expanded = {
+        x: geo.x - eraseR,
+        y: geo.y - eraseR,
+        w: geo.width + eraseR * 2,
+        h: geo.height + eraseR * 2,
+      };
+      const hitsBBox = eraserGraphPts.some(
+        (p) =>
+          p.x >= expanded.x &&
+          p.x <= expanded.x + expanded.w &&
+          p.y >= expanded.y &&
+          p.y <= expanded.y + expanded.h
+      );
+      if (!hitsBBox) continue;
+
+      const localPts = pointsFromFreehandCell(cell);
+      if (localPts.length < 2) continue;
+      const eraserLocal = eraserGraphPts.map((p) => ({
+        x: p.x - geo.x,
+        y: p.y - geo.y,
+        pressure: 0.5,
+      }));
+      const runs = erasePolylineByRadius(localPts, eraserLocal, eraseR);
+      const same =
+        runs.length === 1 &&
+        runs[0]!.length === localPts.length &&
+        runs[0]!.every((p, i) => p.x === localPts[i]!.x && p.y === localPts[i]!.y);
+      if (same) continue;
+
+      changed = true;
+      if (runs.length === 0) {
+        graph.removeCells([cell]);
+        continue;
+      }
+
+      if (runs.length === 1) {
+        const run = runs[0]!;
+        const graphPts = run.map((p) => ({
+          x: p.x + geo.x,
+          y: p.y + geo.y,
+          pressure: p.pressure,
+        }));
+        const xs = graphPts.map((p) => p.x);
+        const ys = graphPts.map((p) => p.y);
+        const pad = style.size + 4;
+        const minX = Math.min(...xs) - pad;
+        const minY = Math.min(...ys) - pad;
+        const maxX = Math.max(...xs) + pad;
+        const maxY = Math.max(...ys) + pad;
+        const relPts = graphPts.map(
+          (p) => [p.x - minX, p.y - minY, p.pressure ?? 0.5] as [number, number, number]
+        );
+        const payload = JSON.stringify({
+          kind: "freehand",
+          label: "",
+          freehand: {
+            points: relPts,
+            size: style.size,
+            color: style.color,
+            opacity: style.opacity,
+            brush: style.brush,
+          },
+        });
+        const g = geo.clone();
+        g.x = minX;
+        g.y = minY;
+        g.width = Math.max(8, maxX - minX);
+        g.height = Math.max(8, maxY - minY);
+        graph.getDataModel().setValue(cell, payload);
+        graph.getDataModel().setGeometry(cell, g);
+        continue;
+      }
+
+      // 2+ runs → remove original, insert one cell per run
+      graph.removeCells([cell]);
+      for (const run of runs) {
+        const graphPts = run.map((p) => ({
+          x: p.x + geo.x,
+          y: p.y + geo.y,
+          pressure: p.pressure,
+        }));
+        insertFreehandVertex(graph, graphPts, style);
+      }
+    }
+    if (changed) graph.setSelectionCells([]);
+  } finally {
+    graph.getDataModel().endUpdate();
+  }
+  return changed;
 }
 
 function edgeStyleKey(kind: DefaultEdgeStyle["edgeStyle"]): string {
@@ -250,6 +420,7 @@ export type DiagramCanvasHandle = {
     opacity: number;
     brush?: "pen" | "brush";
   }) => void;
+  setEraserStyle: (style: { size: number }) => void;
   focusNodes: (ids: string[]) => void;
   setFocusMode: (on: boolean, seedIds?: string[]) => void;
   playFlow: () => void;
@@ -327,6 +498,9 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     vbW: number;
     vbH: number;
   } | null>(null);
+  const [eraserCursor, setEraserCursor] = useState<{ x: number; y: number; r: number } | null>(
+    null
+  );
   const paletteDirRef = useRef<Dir | null>(null);
   paletteDirRef.current = paletteDir;
 
@@ -341,8 +515,11 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   const onShapePlacedRef = useRef(onShapePlaced);
   onShapePlacedRef.current = onShapePlaced;
   const penStyleRef = useRef({ size: 2, color: "#111827", opacity: 1, brush: "pen" as "pen" | "brush" });
+  const eraserStyleRef = useRef({ size: 14 });
   const freehandPtsRef = useRef<StrokePoint[]>([]);
   const freehandDrawingRef = useRef(false);
+  const erasingRef = useRef(false);
+  const eraseDirtyRef = useRef(false);
   const connectingRef = useRef(false);
   const focusModeRef = useRef(false);
   const focusSeedRef = useRef<string[]>([]);
@@ -535,11 +712,18 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
 
         if (mode !== "pen" && mode !== "brush" && mode !== "eraser") return;
         if (mode === "eraser") {
-          const cell = me.getCell();
-          if (cell?.isVertex() && parseKindFromValue(cell.getValue()) === "freehand") {
-            graph.removeCells([cell]);
-            onDirtyRef.current?.();
+          erasingRef.current = true;
+          eraseDirtyRef.current = false;
+          freehandPtsRef.current = [];
+          const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
+          freehandPtsRef.current.push({ x: pt.x, y: pt.y, pressure: 0.5 });
+          const radius = Math.max(2, eraserStyleRef.current.size / 2);
+          if (applyEraserToFreehand(graph, [{ x: pt.x, y: pt.y }], radius)) {
+            eraseDirtyRef.current = true;
           }
+          setEraserCursor({ x: pt.x, y: pt.y, r: radius });
+          me.getEvent().preventDefault?.();
+          InternalEvent.consume(me.getEvent());
           return;
         }
         freehandDrawingRef.current = true;
@@ -553,6 +737,16 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       },
       mouseUp: () => {
         connectingRef.current = false;
+        if (erasingRef.current) {
+          erasingRef.current = false;
+          freehandPtsRef.current = [];
+          setEraserCursor(null);
+          if (eraseDirtyRef.current) {
+            eraseDirtyRef.current = false;
+            onDirtyRef.current?.();
+          }
+          return;
+        }
         if (!freehandDrawingRef.current) return;
         freehandDrawingRef.current = false;
         setStrokePreview(null);
@@ -560,57 +754,33 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         freehandPtsRef.current = [];
         if (pts.length < 2) return;
         const mode = toolModeRef.current;
-        const brush = mode === "brush" ? "brush" : "pen";
-        const style = { ...penStyleRef.current, brush };
-        const xs = pts.map((p) => p.x);
-        const ys = pts.map((p) => p.y);
-        const pad = style.size + 4;
-        const minX = Math.min(...xs) - pad;
-        const minY = Math.min(...ys) - pad;
-        const maxX = Math.max(...xs) + pad;
-        const maxY = Math.max(...ys) + pad;
-        const relPts = pts.map(
-          (p) => [p.x - minX, p.y - minY, p.pressure ?? 0.5] as [number, number, number]
-        );
-        const payload = JSON.stringify({
-          kind: "freehand",
-          label: "",
-          freehand: {
-            points: relPts,
-            size: style.size,
-            color: style.color,
-            opacity: style.opacity,
-            brush,
-          },
-        });
-        graph.getDataModel().beginUpdate();
-        try {
-          const cell = graph.insertVertex({
-            parent: graph.getDefaultParent(),
-            id: crypto.randomUUID(),
-            value: payload,
-            position: [minX, minY],
-            size: [Math.max(8, maxX - minX), Math.max(8, maxY - minY)],
-            style: {
-              shape: CUSTOM_SHAPE.freehand,
-              fillColor: "none",
-              strokeColor: style.color,
-              strokeWidth: Math.max(1, style.size),
-              opacity: Math.round(style.opacity * 100),
-              fontSize: 1,
-              fontColor: "none",
-              diagramKind: "freehand",
-            } as CellStyle,
-          });
-          graph.setSelectionCells([]);
-          void cell;
-        } finally {
-          graph.getDataModel().endUpdate();
-        }
+        const brush: "pen" | "brush" = mode === "brush" ? "brush" : "pen";
+        const style: FreehandStyle = { ...penStyleRef.current, brush };
+        insertFreehandVertex(graph, pts, style);
+        graph.setSelectionCells([]);
         onDirtyRef.current?.();
       },
       mouseMove: (_sender: unknown, me: { getCell: () => Cell | null; getEvent: () => MouseEvent }) => {
         if (readOnlyRef.current) return;
+        if (erasingRef.current) {
+          const evt = me.getEvent();
+          const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
+          const prev = freehandPtsRef.current[freehandPtsRef.current.length - 1];
+          freehandPtsRef.current.push({ x: pt.x, y: pt.y, pressure: 0.5 });
+          // Keep trail short — only need last segment for coverage
+          if (freehandPtsRef.current.length > 8) {
+            freehandPtsRef.current = freehandPtsRef.current.slice(-4);
+          }
+          const radius = Math.max(2, eraserStyleRef.current.size / 2);
+          const samples: StrokePoint[] = prev
+            ? [prev, { x: pt.x, y: pt.y }]
+            : [{ x: pt.x, y: pt.y }];
+          if (applyEraserToFreehand(graph, samples, radius)) {
+            eraseDirtyRef.current = true;
+          }
+          setEraserCursor({ x: pt.x, y: pt.y, r: radius });
+          return;
+        }
         if (freehandDrawingRef.current) {
           const evt = me.getEvent();
           const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
@@ -659,6 +829,16 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         }
         if (paletteDirRef.current) return;
         const mode = toolModeRef.current;
+        if (mode === "eraser") {
+          const evt = me.getEvent();
+          const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
+          const radius = Math.max(2, eraserStyleRef.current.size / 2);
+          setEraserCursor({ x: pt.x, y: pt.y, r: radius });
+          setHoverUi(null);
+          setPaletteDir(null);
+          return;
+        }
+        setEraserCursor(null);
         if (mode !== "select" && mode !== "connector" && mode !== "arrow") {
           setHoverUi(null);
           setPaletteDir(null);
@@ -717,14 +897,15 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     if (!graph) return;
     graph.setGridEnabled(settings?.grid !== false);
     graph.setGridSize(settings?.gridSize ?? 10);
-    graph.setConnectable(!readOnly);
-    graph.setCellsEditable(!readOnly);
-    graph.setCellsResizable(!readOnly);
-    graph.setCellsMovable(!readOnly);
     const selectionHandler = graph.getPlugin("SelectionHandler") as SelectionHandler | null;
     if (selectionHandler) {
       selectionHandler.guidesEnabled = settings?.guides !== false;
     }
+    // Re-apply active tool flags so settings/readOnly don't silently re-enable select/move.
+    applyToolModeToGraph(graph, toolModeRef.current, {
+      readOnly,
+      host: hostRef.current,
+    });
     if (paperRef.current) {
       const paper = settings?.paper ?? "a4-portrait";
       const size =
@@ -1323,6 +1504,14 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     setToolMode: (mode) => {
       toolModeRef.current = mode;
       setToolModeUi(mode);
+      // Leaving shape-place must drop pending shape immediately (don't wait for sync).
+      if (mode !== "shape-place") {
+        pendingShapeRef.current = null;
+      }
+      if (mode !== "eraser") {
+        setEraserCursor(null);
+        erasingRef.current = false;
+      }
       const graph = graphRef.current;
       if (!graph) return;
       applyToolModeToGraph(graph, mode, { readOnly: readOnlyRef.current, host: hostRef.current });
@@ -1339,6 +1528,9 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     setPendingShape: (shape) => {
       pendingShapeRef.current = shape;
+    },
+    setEraserStyle: (style) => {
+      eraserStyleRef.current = { size: Math.max(2, style.size) };
     },
     setDefaultEdgeStyle: (style) => {
       defaultEdgeStyleRef.current = style;
@@ -1713,6 +1905,25 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
             strokeLinejoin="round"
           />
         </svg>
+      ) : null}
+
+      {eraserCursor && toolModeUi === "eraser" ? (
+        <div
+          className="pointer-events-none absolute z-30 rounded-full border border-[#64748b] bg-white/30"
+          style={(() => {
+            const graph = graphRef.current;
+            const scale = graph?.getView().getScale() ?? 1;
+            const tr = graph?.getView().getTranslate() ?? { x: 0, y: 0 };
+            const d = eraserCursor.r * 2 * scale;
+            return {
+              left: (eraserCursor.x + tr.x) * scale - d / 2,
+              top: (eraserCursor.y + tr.y) * scale - d / 2,
+              width: d,
+              height: d,
+            };
+          })()}
+          aria-hidden
+        />
       ) : null}
 
       {hoverUi &&

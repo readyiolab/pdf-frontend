@@ -619,6 +619,7 @@ function PenStrip() {
   const tools = useDiagramToolsOptional();
   if (!tools) return null;
   const mode = tools.activeTool;
+  const isEraser = mode === "eraser";
   const opts =
     mode === "brush" || mode === "marker"
       ? tools.brush
@@ -660,38 +661,55 @@ function PenStrip() {
         </button>
       ))}
       <Sep />
-      <label className="flex items-center gap-1 text-[11px] text-[#64748b]">
-        Color
-        <input
-          type="color"
-          value={opts.color}
-          onChange={(e) => setOpts((p) => ({ ...p, color: e.target.value }))}
-          className="size-6 cursor-pointer rounded border border-[#cbd5e1] p-0.5"
-        />
-      </label>
-      <label className="flex items-center gap-1 text-[11px] text-[#64748b]">
-        Size
-        <input
-          type="range"
-          min={1}
-          max={24}
-          value={opts.size}
-          onChange={(e) => setOpts((p) => ({ ...p, size: Number(e.target.value) }))}
-          className="w-16"
-        />
-      </label>
-      <label className="flex items-center gap-1 text-[11px] text-[#64748b]">
-        Opacity
-        <input
-          type="range"
-          min={0.1}
-          max={1}
-          step={0.05}
-          value={opts.opacity}
-          onChange={(e) => setOpts((p) => ({ ...p, opacity: Number(e.target.value) }))}
-          className="w-16"
-        />
-      </label>
+      {isEraser ? (
+        <label className="flex items-center gap-1 text-[11px] text-[#64748b]">
+          Size
+          <input
+            type="range"
+            min={4}
+            max={48}
+            value={tools.eraser.size}
+            onChange={(e) => tools.setEraser({ size: Number(e.target.value) })}
+            className="w-16"
+          />
+          <span className="w-6 tabular-nums text-[10px] text-[#94a3b8]">{tools.eraser.size}</span>
+        </label>
+      ) : (
+        <>
+          <label className="flex items-center gap-1 text-[11px] text-[#64748b]">
+            Color
+            <input
+              type="color"
+              value={opts.color}
+              onChange={(e) => setOpts((p) => ({ ...p, color: e.target.value }))}
+              className="size-6 cursor-pointer rounded border border-[#cbd5e1] p-0.5"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-[#64748b]">
+            Size
+            <input
+              type="range"
+              min={1}
+              max={24}
+              value={opts.size}
+              onChange={(e) => setOpts((p) => ({ ...p, size: Number(e.target.value) }))}
+              className="w-16"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-[#64748b]">
+            Opacity
+            <input
+              type="range"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={opts.opacity}
+              onChange={(e) => setOpts((p) => ({ ...p, opacity: Number(e.target.value) }))}
+              className="w-16"
+            />
+          </label>
+        </>
+      )}
       <button
         type="button"
         className="ml-auto rounded-md px-2 py-1 text-[11px] font-semibold text-[#1d4ed8] hover:bg-[#eff6ff]"

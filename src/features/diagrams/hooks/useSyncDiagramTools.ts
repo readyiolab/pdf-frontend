@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useLayoutEffect, type RefObject } from "react";
 import type { DiagramCanvasHandle } from "@/components/diagrams/DiagramCanvas";
 import { useDiagramTools } from "@/components/diagrams/DiagramToolsContext";
 
@@ -6,7 +6,8 @@ import { useDiagramTools } from "@/components/diagrams/DiagramToolsContext";
 export function useSyncDiagramTools(canvasRef: RefObject<DiagramCanvasHandle | null>) {
   const tools = useDiagramTools();
 
-  useEffect(() => {
+  // Layout effect so toolModeRef updates before paint / before the next click.
+  useLayoutEffect(() => {
     const tool = tools.activeTool;
     let mode: "select" | "pan" | "pen" | "brush" | "eraser" | "connector" | "arrow" | "shape-place" =
       "select";
@@ -29,8 +30,17 @@ export function useSyncDiagramTools(canvasRef: RefObject<DiagramCanvasHandle | n
       canvasRef.current?.setPenStyle({ ...tools.pen, brush: "pen" });
     } else if (tool === "brush" || tool === "marker") {
       canvasRef.current?.setPenStyle({ ...tools.brush, brush: "brush" });
+    } else if (tool === "eraser") {
+      canvasRef.current?.setEraserStyle({ size: tools.eraser.size });
     }
-  }, [canvasRef, tools.activeTool, tools.pen, tools.brush, tools.pendingShape]);
+  }, [
+    canvasRef,
+    tools.activeTool,
+    tools.pen,
+    tools.brush,
+    tools.eraser,
+    tools.pendingShape,
+  ]);
 
   useEffect(() => {
     canvasRef.current?.setDefaultEdgeStyle(tools.connectorStyle);

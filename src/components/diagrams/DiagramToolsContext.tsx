@@ -65,6 +65,8 @@ type DiagramToolsContextValue = {
   setPen: Dispatch<SetStateAction<PenOptions>>;
   brush: PenOptions;
   setBrush: Dispatch<SetStateAction<PenOptions>>;
+  eraser: { size: number };
+  setEraser: Dispatch<SetStateAction<{ size: number }>>;
   tableOpts: TableOptions;
   setTableOpts: Dispatch<SetStateAction<TableOptions>>;
   connectorStyle: ConnectorStylePreset;
@@ -81,6 +83,7 @@ const DiagramToolsContext = createContext<DiagramToolsContextValue | null>(null)
 
 const DEFAULT_PEN: PenOptions = { size: 2, color: "#111827", opacity: 1 };
 const DEFAULT_BRUSH: PenOptions = { size: 8, color: "#3b82f6", opacity: 0.35 };
+const DEFAULT_ERASER = { size: 14 };
 const DEFAULT_TABLE: TableOptions = {
   rows: 3,
   cols: 3,
@@ -125,6 +128,7 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
   const [pendingShape, setPendingShape] = useState<string | null>(null);
   const [pen, setPen] = useState<PenOptions>(DEFAULT_PEN);
   const [brush, setBrush] = useState<PenOptions>(DEFAULT_BRUSH);
+  const [eraser, setEraser] = useState(DEFAULT_ERASER);
   const [tableOpts, setTableOpts] = useState<TableOptions>(DEFAULT_TABLE);
   const [connectorStyle, setConnectorStyle] = useState<ConnectorStylePreset>(DEFAULT_CONNECTOR);
   const [colorTarget, setColorTarget] = useState<"fill" | "stroke">("fill");
@@ -185,8 +189,7 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
           setOpenMenuState(null);
           return;
         }
-        setActiveToolRaw("select");
-        setPendingShape(null);
+        setDrawingTool("select");
         return;
       }
 
@@ -215,8 +218,7 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
       } else if (k === "r") {
         e.preventDefault();
         setPendingShape("rectangle");
-        setActiveToolRaw("shape-place");
-        setOpenMenuState(null);
+        setDrawingTool("shape-place");
       } else if (k === "t") {
         e.preventDefault();
         // text insert is editor-owned; emit via custom event
@@ -261,6 +263,8 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
       setPen,
       brush,
       setBrush,
+      eraser,
+      setEraser,
       tableOpts,
       setTableOpts,
       connectorStyle,
@@ -282,6 +286,7 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
       pendingShape,
       pen,
       brush,
+      eraser,
       tableOpts,
       connectorStyle,
       colorTarget,
