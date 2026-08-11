@@ -28,6 +28,7 @@ import { useTheme } from "../theme-provider";
 import { TOOLS, TOOL_CATEGORIES, getToolRoute } from "@/lib/design-tokens";
 import { AuthModal } from "../auth/AuthModal";
 import { cn } from "@/lib/utils";
+import { prefetchHandlers, prefetchRoute } from "@/lib/routePrefetch";
 
 const TOOL_GROUPS = TOOL_CATEGORIES.filter((cat) => cat !== "All")
   .map((cat) => ({
@@ -141,7 +142,7 @@ export const Navbar: React.FC = () => {
               <Menu className="h-5 w-5" />
             </button>
 
-            <Link to="/" className="group flex shrink-0 items-center gap-2">
+            <Link to="/" className="group flex shrink-0 items-center gap-2" {...prefetchHandlers("/")}>
               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/25 transition-transform group-hover:scale-[1.03]">
                 <FileText className="h-4 w-4" />
               </span>
@@ -153,7 +154,10 @@ export const Navbar: React.FC = () => {
             <nav className="relative ml-1 hidden items-center gap-0.5 lg:flex">
               <div
                 className="relative py-2"
-                onMouseEnter={() => setIsToolsOpen(true)}
+                onMouseEnter={() => {
+                  setIsToolsOpen(true);
+                  prefetchRoute("/workspace");
+                }}
                 onMouseLeave={closeTools}
               >
                 <button
@@ -202,6 +206,8 @@ export const Navbar: React.FC = () => {
                                   key={tool.id}
                                   to={getToolRoute(tool)}
                                   onClick={closeTools}
+                                  onMouseEnter={() => prefetchRoute(getToolRoute(tool))}
+                                  onFocus={() => prefetchRoute(getToolRoute(tool))}
                                   className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 hover:bg-muted"
                                 >
                                   <span
@@ -240,6 +246,8 @@ export const Navbar: React.FC = () => {
                                       <Link
                                         to={getToolRoute(tool)}
                                         onClick={closeTools}
+                                        onMouseEnter={() => prefetchRoute(getToolRoute(tool))}
+                                        onFocus={() => prefetchRoute(getToolRoute(tool))}
                                         className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted"
                                       >
                                         <span
@@ -276,6 +284,7 @@ export const Navbar: React.FC = () => {
                         <Link
                           to="/workspace"
                           onClick={closeTools}
+                          {...prefetchHandlers("/workspace")}
                           className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
                         >
                           All tools ({TOOLS.length})
@@ -287,28 +296,28 @@ export const Navbar: React.FC = () => {
                 )}
               </div>
 
-              <Link to="/workspace" className={linkClass("/workspace")}>
+              <Link to="/workspace" className={linkClass("/workspace")} {...prefetchHandlers("/workspace")}>
                 Workspace
               </Link>
-              <Link to="/esign" className={linkClass("/esign")}>
+              <Link to="/esign" className={linkClass("/esign")} {...prefetchHandlers("/esign")}>
                 eSign
               </Link>
-              <Link to="/letters" className={linkClass("/letters")}>
+              <Link to="/letters" className={linkClass("/letters")} {...prefetchHandlers("/letters")}>
                 Letters
               </Link>
-              <Link to="/diagrams" className={linkClass("/diagrams")}>
+              <Link to="/diagrams" className={linkClass("/diagrams")} {...prefetchHandlers("/diagrams")}>
                 Diagrams
               </Link>
-              <Link to="/ai/summarize" className={linkClass("/ai")}>
+              <Link to="/ai/summarize" className={linkClass("/ai")} {...prefetchHandlers("/ai/summarize")}>
                 AI Suite
               </Link>
-              <Link to="/enterprise" className={linkClass("/enterprise")}>
+              <Link to="/enterprise" className={linkClass("/enterprise")} {...prefetchHandlers("/enterprise")}>
                 Your cloud
               </Link>
-              <Link to="/desktop" className={linkClass("/desktop")}>
+              <Link to="/desktop" className={linkClass("/desktop")} {...prefetchHandlers("/desktop")}>
                 Desktop
               </Link>
-              <Link to="/billing" className={linkClass("/billing")}>
+              <Link to="/billing" className={linkClass("/billing")} {...prefetchHandlers("/billing")}>
                 Pricing
               </Link>
             </nav>
@@ -365,24 +374,30 @@ export const Navbar: React.FC = () => {
                     <Link
                       to="/profile"
                       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium hover:bg-muted"
+                      {...prefetchHandlers("/profile")}
                     >
                       <Settings className="h-3.5 w-3.5 text-muted-foreground" /> Account
                     </Link>
                     <Link
                       to="/history"
                       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium hover:bg-muted"
+                      {...prefetchHandlers("/history")}
                     >
                       <History className="h-3.5 w-3.5 text-muted-foreground" /> History
                     </Link>
                     <Link
                       to={user.plan === "ENTERPRISE" ? "/settings/cloud" : "/enterprise"}
                       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium hover:bg-muted"
+                      {...prefetchHandlers(
+                        user.plan === "ENTERPRISE" ? "/settings/cloud" : "/enterprise"
+                      )}
                     >
                       <Cloud className="h-3.5 w-3.5 text-muted-foreground" /> Your cloud
                     </Link>
                     <Link
                       to="/billing"
                       className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium hover:bg-muted"
+                      {...prefetchHandlers("/billing")}
                     >
                       <CreditCard className="h-3.5 w-3.5 text-muted-foreground" /> Billing
                     </Link>
@@ -466,6 +481,7 @@ export const Navbar: React.FC = () => {
                       key={item.to}
                       to={item.to}
                       onClick={closeMobile}
+                      {...prefetchHandlers(item.to)}
                       className={cn(
                         "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
                         active

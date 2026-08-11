@@ -1,7 +1,8 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
+import { RouteFallback } from "@/components/RouteFallback";
 import { cn } from "@/lib/utils";
 
 export const AppLayout: React.FC = () => {
@@ -72,7 +73,9 @@ export const AppLayout: React.FC = () => {
                 : "mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 md:px-8 lg:px-10"
             }
           >
-            <Outlet />
+            <Suspense fallback={<RouteFallback />}>
+              <Outlet />
+            </Suspense>
           </div>
 
           {!hideFooter && <Footer />}

@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { LayoutGrid, Plus } from "lucide-react";
+import { RouteFallback } from "@/components/RouteFallback";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -36,7 +38,9 @@ export function DiagramStudioShell() {
         </nav>
       </aside>
       <main className="min-h-0 min-w-0 flex-1">
-        <Outlet />
+        <Suspense fallback={<RouteFallback className="min-h-dvh" />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

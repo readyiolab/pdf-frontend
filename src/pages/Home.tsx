@@ -38,6 +38,7 @@ import {
 } from "@/components/desktop/motion";
 import { EsignStatusMock } from "@/components/esign/EsignStatusMock";
 import { ONLINE_PLANS } from "@/lib/pricing";
+import { prefetchRoute } from "@/lib/routePrefetch";
 
 const FAQS = [
   {
@@ -152,6 +153,7 @@ export const Home: React.FC = () => {
 
   const primaryCta = user ? "Open workspace" : "Start free";
   const primaryPath = "/workspace";
+  const warmNav = (path: string) => () => prefetchRoute(path);
   const byocPath = user?.plan === "ENTERPRISE" ? "/settings/cloud" : "/enterprise";
   const byocCta = user?.plan === "ENTERPRISE" ? "Open cloud storage" : "Use your own cloud";
   const activePanel = HERO_PANELS[activeTool];
@@ -216,6 +218,8 @@ export const Home: React.FC = () => {
               <Button
                 size="lg"
                 className="h-12 cursor-pointer rounded-full bg-blue-600 px-8 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition-transform hover:scale-[1.02] hover:bg-blue-700"
+                onMouseEnter={warmNav(primaryPath)}
+                onFocus={warmNav(primaryPath)}
                 onClick={() => navigate(primaryPath)}
               >
                 {primaryCta}
@@ -268,6 +272,8 @@ export const Home: React.FC = () => {
               <button
                 type="button"
                 onClick={() => navigate("/diagrams")}
+                onMouseEnter={warmNav("/diagrams")}
+                onFocus={warmNav("/diagrams")}
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold text-violet-800 transition-colors hover:bg-violet-50"
               >
                 <GitBranch className="h-3.5 w-3.5" />
@@ -557,6 +563,8 @@ export const Home: React.FC = () => {
               variant="outline"
               className="h-10 w-fit cursor-pointer rounded-full border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               onClick={() => navigate("/workspace")}
+              onMouseEnter={warmNav("/workspace")}
+              onFocus={warmNav("/workspace")}
             >
               Open all tools
               <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
@@ -610,6 +618,8 @@ export const Home: React.FC = () => {
                 >
                   <Link
                     to={getToolRoute(tool)}
+                    onMouseEnter={() => prefetchRoute(getToolRoute(tool))}
+                    onFocus={() => prefetchRoute(getToolRoute(tool))}
                     className={cn(
                       "group relative flex h-full flex-col overflow-hidden rounded-2xl border p-5 transition-all duration-300",
                       featured
@@ -726,6 +736,8 @@ export const Home: React.FC = () => {
                   size="lg"
                   className="h-12 cursor-pointer rounded-full bg-blue-600 px-7 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700"
                   onClick={() => navigate("/esign")}
+                  onMouseEnter={warmNav("/esign")}
+                  onFocus={warmNav("/esign")}
                 >
                   Explore eSign
                   <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -735,6 +747,8 @@ export const Home: React.FC = () => {
                   size="lg"
                   className="h-12 cursor-pointer rounded-full border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   onClick={() => navigate(user ? "/sign" : "/esign")}
+                  onMouseEnter={warmNav(user ? "/sign" : "/esign")}
+                  onFocus={warmNav(user ? "/sign" : "/esign")}
                 >
                   {user ? "Open eSign" : "See how it works"}
                 </Button>
@@ -862,6 +876,8 @@ export const Home: React.FC = () => {
                   size="lg"
                   className="h-12 cursor-pointer rounded-full border-slate-600 bg-transparent px-7 text-sm font-semibold text-slate-100 hover:bg-white/5 hover:text-white"
                   onClick={() => navigate("/billing")}
+                  onMouseEnter={warmNav("/billing")}
+                  onFocus={warmNav("/billing")}
                 >
                   View plans
                 </Button>
@@ -969,6 +985,8 @@ export const Home: React.FC = () => {
                   size="lg"
                   className="h-12 cursor-pointer rounded-full bg-indigo-600 px-7 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 hover:bg-indigo-700"
                   onClick={() => navigate("/letters")}
+                  onMouseEnter={warmNav("/letters")}
+                  onFocus={warmNav("/letters")}
                 >
                   Explore Letter Studio
                   <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -978,6 +996,8 @@ export const Home: React.FC = () => {
                   size="lg"
                   className="h-12 cursor-pointer rounded-full border-slate-200 bg-white px-7 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   onClick={() => navigate(user ? "/letters/studio" : "/login")}
+                  onMouseEnter={warmNav(user ? "/letters/studio" : "/login")}
+                  onFocus={warmNav(user ? "/letters/studio" : "/login")}
                 >
                   {user ? "Open studio" : "Start free"}
                 </Button>
@@ -1092,6 +1112,8 @@ export const Home: React.FC = () => {
                   size="lg"
                   className="h-12 cursor-pointer rounded-full bg-blue-600 px-7 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 hover:bg-blue-700"
                   onClick={() => navigate("/desktop")}
+                  onMouseEnter={warmNav("/desktop")}
+                  onFocus={warmNav("/desktop")}
                 >
                   Explore desktop
                   <ArrowRight className="ml-1.5 h-4 w-4" />
@@ -1109,6 +1131,8 @@ export const Home: React.FC = () => {
                   size="lg"
                   className="h-12 cursor-pointer rounded-full px-5 text-sm font-semibold text-slate-600"
                   onClick={() => navigate("/diagrams")}
+                onMouseEnter={warmNav("/diagrams")}
+                onFocus={warmNav("/diagrams")}
                 >
                   Diagram Studio online
                 </Button>

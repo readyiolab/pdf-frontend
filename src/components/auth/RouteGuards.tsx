@@ -3,7 +3,7 @@ import { Navigate, Link } from "react-router-dom";
 import { Mail } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { RouteFallback } from "@/components/RouteFallback";
 
 function isVerified(user: { emailVerified?: boolean | number | string } | null | undefined): boolean {
   if (!user) return false;
@@ -15,12 +15,9 @@ function isVerified(user: { emailVerified?: boolean | number | string } | null |
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <Spinner className="size-5" />
-      </div>
-    );
+  // Token in localStorage is enough to enter; don't wait on /users/me.
+  if (loading && !token) {
+    return <RouteFallback />;
   }
   if (!token) return <Navigate to="/login" replace />;
   return <>{children}</>;
@@ -47,14 +44,19 @@ export function VerifiedRoute({ children }: { children: React.ReactNode }) {
       .finally(() => setChecking(false));
   }, [token, loading, user, refreshProfile]);
 
-  if (loading || checking) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <Spinner className="size-5" />
-      </div>
-    );
+  if (!token) {
+    if (loading) return <RouteFallback />;
+    return <Navigate to="/login" replace />;
   }
-  if (!token) return <Navigate to="/login" replace />;
+
+  // Profile still hydrating — show outlet skeleton, not a blank hang.
+  if (loading && !user) {
+    return <RouteFallback />;
+  }
+
+  if (checking) {
+    return <RouteFallback />;
+  }
 
   if (user?.isGuest) {
     return (
@@ -96,6 +98,12 @@ export function VerifiedRoute({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  // User verified (or still null briefly after token-only allow through ProtectedRoute —
+  // if no user yet but not loading, wait for profile before gated product).
+  if (!user) {
+    return <RouteFallback />;
   }
 
   return <>{children}</>;

@@ -2,9 +2,10 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { AppLayout } from "./components/layout/AppLayout";
-import { Spinner } from "./components/ui/spinner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ScrollToTop } from "./components/ScrollToTop";
+import { NavigationProgress } from "./components/NavigationProgress";
+import { RouteFallback } from "./components/RouteFallback";
 import { RouteSeo } from "./components/Seo";
 import { ProtectedRoute, VerifiedRoute } from "./components/auth/RouteGuards";
 
@@ -55,22 +56,23 @@ const DiagramsListPage = lazy(() => import("./pages/diagrams/DiagramsListPage"))
 const DiagramEditorPage = lazy(() => import("./pages/diagrams/DiagramEditorPage"));
 const SharedDiagramPage = lazy(() => import("./pages/diagrams/SharedDiagramPage"));
 
-const PageLoader = () => (
-  <div className="flex min-h-[50vh] items-center justify-center animate-fade-in">
-    <Spinner className="h-6 w-6 text-primary" />
-  </div>
-);
-
 function App() {
   return (
     <AuthProvider>
       <TooltipProvider delayDuration={300}>
         <Router>
           <ScrollToTop />
+          <NavigationProgress />
           <RouteSeo />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/s/:token" element={<SignDocument />} />
+          <Routes>
+              <Route
+                path="/s/:token"
+                element={
+                  <Suspense fallback={<RouteFallback className="min-h-dvh" />}>
+                    <SignDocument />
+                  </Suspense>
+                }
+              />
 
               <Route path="/" element={<AppLayout />}>
                 <Route index element={<Home />} />
@@ -212,7 +214,6 @@ function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>
-          </Suspense>
         </Router>
       </TooltipProvider>
     </AuthProvider>

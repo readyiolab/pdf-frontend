@@ -1,5 +1,5 @@
+import { Suspense, type CSSProperties } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import type { CSSProperties } from "react";
 import {
   FileText,
   History,
@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RouteFallback } from "@/components/RouteFallback";
 import { cn } from "@/lib/utils";
 import { LetterOnboardingWizard } from "./LetterOnboardingWizard";
 
@@ -176,7 +177,9 @@ export function LetterStudioShell() {
           )}
         >
           <div className={cn(flush ? "flex h-full min-h-0 flex-col" : "min-h-full")}>
-            <Outlet />
+            <Suspense fallback={<RouteFallback className="min-h-[50vh]" />}>
+              <Outlet />
+            </Suspense>
           </div>
         </div>
       </div>
