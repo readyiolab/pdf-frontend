@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+export { ToolRail, type ToolRailProps } from "./ToolRail";
+
 type Props = {
   zoom: number;
   onZoomChange: (z: number) => void;

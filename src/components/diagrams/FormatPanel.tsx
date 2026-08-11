@@ -21,6 +21,7 @@ type Props = {
   selection: SelectionInfo | null;
   onApplyStyle: (patch: Partial<CellStyle>) => void;
   onOpenPageSetup?: () => void;
+  onThemeChange?: (themeId: string) => void;
   className?: string;
 };
 
@@ -30,6 +31,7 @@ export function FormatPanel({
   selection,
   onApplyStyle,
   onOpenPageSetup,
+  onThemeChange,
   className,
 }: Props) {
   const style = selection?.style ?? {};
@@ -109,6 +111,28 @@ export function FormatPanel({
                 />
               </div>
             ))}
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">Theme</h3>
+            <Select
+              value={settings.theme ?? "automatic"}
+              onValueChange={(v) => {
+                if (onThemeChange) onThemeChange(v);
+                else onSettingsChange({ theme: v as DiagramSettings["theme"] });
+              }}
+            >
+              <SelectTrigger className="h-8 rounded-md text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {["automatic", "classic", "simple", "minimal", "sketch", "atlas"].map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </section>
 
           <section className="space-y-2">
@@ -253,6 +277,25 @@ export function FormatPanel({
               </Field>
               {selection.isEdge && (
                 <>
+                  <Field label="Start arrow">
+                    <Select
+                      value={(style.startArrow as string) || "none"}
+                      onValueChange={(v) =>
+                        onApplyStyle({ startArrow: v === "none" ? undefined : v })
+                      }
+                    >
+                      <SelectTrigger className="h-8 rounded-md text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["none", "classic", "block", "open", "oval", "diamond"].map((a) => (
+                          <SelectItem key={a} value={a}>
+                            {a}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                   <Field label="End arrow">
                     <Select
                       value={(style.endArrow as string) || "classic"}
@@ -270,14 +313,39 @@ export function FormatPanel({
                       </SelectContent>
                     </Select>
                   </Field>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Bidirectional</Label>
+                    <Switch
+                      checked={Boolean(style.startArrow) && Boolean(style.endArrow)}
+                      onCheckedChange={(v) =>
+                        onApplyStyle(
+                          v
+                            ? {
+                                startArrow: (style.endArrow as string) || "classic",
+                                endArrow: (style.endArrow as string) || "classic",
+                              }
+                            : { startArrow: undefined }
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Curved</Label>
+                    <Switch
+                      checked={Boolean(style.curved)}
+                      onCheckedChange={(v) => onApplyStyle({ curved: v })}
+                    />
+                  </div>
                   <Field label="Connector">
                     <Select
                       value={
-                        String(style.edgeStyle || "").includes("orthogonal")
-                          ? "orthogonal"
-                          : String(style.edgeStyle || "").includes("elbow")
-                            ? "elbow"
-                            : "straight"
+                        style.curved
+                          ? "curved"
+                          : String(style.edgeStyle || "").includes("orthogonal")
+                            ? "orthogonal"
+                            : String(style.edgeStyle || "").includes("elbow")
+                              ? "elbow"
+                              : "straight"
                       }
                       onValueChange={(v) =>
                         onApplyStyle({
@@ -298,6 +366,7 @@ export function FormatPanel({
                         <SelectItem value="orthogonal">Orthogonal</SelectItem>
                         <SelectItem value="straight">Straight</SelectItem>
                         <SelectItem value="elbow">Elbow</SelectItem>
+                        <SelectItem value="curved">Curved</SelectItem>
                       </SelectContent>
                     </Select>
                   </Field>

@@ -13,6 +13,11 @@ import {
   UndoManager,
   Clipboard,
   HierarchicalLayout,
+  CompactTreeLayout,
+  RadialTreeLayout,
+  FastOrganicLayout,
+  CircleLayout,
+  ParallelEdgeLayout,
   getDefaultPlugins,
   StencilShapeConfig,
   ConnectionConstraint,
@@ -32,7 +37,20 @@ import {
   PAPER_SIZES,
 } from "@/lib/diagram/model";
 import type { ShapeDef } from "@/lib/diagram/shapes";
+import { getStrokeOutline, type StrokePoint } from "@/lib/diagram/freehand";
 import { cn } from "@/lib/utils";
+
+export type CanvasToolMode = "select" | "pen" | "brush" | "eraser" | "connector" | "arrow";
+
+export type LayoutKindCanvas =
+  | "vertical-flow"
+  | "horizontal-flow"
+  | "vertical-tree"
+  | "horizontal-tree"
+  | "radial"
+  | "organic"
+  | "circle"
+  | "orthogonal";
 
 // maxGraph can eval style/stencil strings when allowEval is true. Keep it off
 // for production (default is already false; set explicitly for defense).
@@ -61,6 +79,37 @@ const CARDINAL_CONSTRAINTS = [
   new ConnectionConstraint(new Point(0.5, 1), true, "S"),
   new ConnectionConstraint(new Point(0, 0.5), true, "W"),
 ];
+
+function parseKindFromValue(raw: unknown): string {
+  if (raw == null) return "shape";
+  if (typeof raw === "object" && raw !== null && "kind" in raw) {
+    return String((raw as { kind: string }).kind);
+  }
+  const str = String(raw);
+  if (str.startsWith("{")) {
+    try {
+      const p = JSON.parse(str) as { kind?: string };
+      if (p?.kind) return p.kind;
+    } catch {
+      /* ignore */
+    }
+  }
+  return "shape";
+}
+
+function snapToGrid(n: number, grid: number) {
+  return Math.round(n / grid) * grid;
+}
+
+function clientToGraph(graph: Graph, host: HTMLElement, clientX: number, clientY: number) {
+  const rect = host.getBoundingClientRect();
+  const scale = graph.getView().getScale();
+  const tr = graph.getView().getTranslate();
+  return {
+    x: (clientX - rect.left) / scale - tr.x,
+    y: (clientY - rect.top) / scale - tr.y,
+  };
+}
 
 export type SelectionInfo = {
   cells: Cell[];
@@ -102,6 +151,36 @@ export type DiagramCanvasHandle = {
   duplicate: () => void;
   nudge: (dx: number, dy: number) => void;
   setReadOnly: (ro: boolean) => void;
+  runLayout: (kind: LayoutKindCanvas) => void;
+  magicCleanup: () => void;
+  insertTable: (
+    rows: number,
+    cols: number,
+    opts?: { title?: boolean; container?: boolean }
+  ) => void;
+  insertContainer: (title?: string) => void;
+  insertFreehand: (
+    points: Array<[number, number] | [number, number, number]>,
+    style: { size: number; color: string; opacity: number; brush: "pen" | "brush" }
+  ) => void;
+  setToolMode: (mode: CanvasToolMode) => void;
+  setPenStyle: (style: {
+    size: number;
+    color: string;
+    opacity: number;
+    brush?: "pen" | "brush";
+  }) => void;
+  focusNodes: (ids: string[]) => void;
+  setFocusMode: (on: boolean, seedIds?: string[]) => void;
+  playFlow: () => void;
+  pauseFlow: () => void;
+  restartFlow: () => void;
+  stepFlow: () => void;
+  setFlowSpeed: (s: number) => void;
+  getSelectionBounds: () => { x: number; y: number; w: number; h: number } | null;
+  lockSelection: (locked: boolean) => void;
+  groupSelection: () => void;
+  ungroupSelection: () => void;
 };
 
 type HoverUi = {
@@ -141,6 +220,20 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   const [paletteHover, setPaletteHover] = useState<string | null>(null);
   const paletteDirRef = useRef<Dir | null>(null);
   paletteDirRef.current = paletteDir;
+
+  const toolModeRef = useRef<CanvasToolMode>("select");
+  const penStyleRef = useRef({ size: 2, color: "#111827", opacity: 1, brush: "pen" as "pen" | "brush" });
+  const freehandPtsRef = useRef<StrokePoint[]>([]);
+  const freehandDrawingRef = useRef(false);
+  const focusModeRef = useRef(false);
+  const focusSeedRef = useRef<string[]>([]);
+  const flowTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flowIndexRef = useRef(0);
+  const flowSpeedRef = useRef(1);
+  const flowEdgesRef = useRef<Cell[]>([]);
+  const flowOrigStylesRef = useRef<Map<string, CellStyle>>(new Map());
+  const onDirtyRef = useRef(onDirty);
+  onDirtyRef.current = onDirty;
 
   const emitSelection = useCallback(() => {
     const graph = graphRef.current;
@@ -248,11 +341,104 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     graph.getDataModel().addListener(InternalEvent.CHANGE, refreshHover as never);
 
     const mouseListener = {
-      mouseDown: () => undefined,
-      mouseUp: () => undefined,
-      mouseMove: (_sender: unknown, me: { getCell: () => Cell | null }) => {
+      mouseDown: (_sender: unknown, me: { getCell: () => Cell | null; getEvent: () => MouseEvent }) => {
         if (readOnlyRef.current) return;
+        const mode = toolModeRef.current;
+        if (mode !== "pen" && mode !== "brush" && mode !== "eraser") return;
+        const evt = me.getEvent();
+        if (mode === "eraser") {
+          const cell = me.getCell();
+          if (cell?.isVertex() && parseKindFromValue(cell.getValue()) === "freehand") {
+            graph.removeCells([cell]);
+            onDirtyRef.current?.();
+          }
+          return;
+        }
+        freehandDrawingRef.current = true;
+        freehandPtsRef.current = [];
+        const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
+        freehandPtsRef.current.push({ x: pt.x, y: pt.y, pressure: 0.5 });
+        me.getEvent().preventDefault?.();
+      },
+      mouseUp: () => {
+        if (!freehandDrawingRef.current) return;
+        freehandDrawingRef.current = false;
+        const pts = freehandPtsRef.current;
+        freehandPtsRef.current = [];
+        if (pts.length < 2) return;
+        const mode = toolModeRef.current;
+        const brush = mode === "brush" ? "brush" : "pen";
+        const style = { ...penStyleRef.current, brush };
+        // insert via shared helper on next tick through graph directly
+        const xs = pts.map((p) => p.x);
+        const ys = pts.map((p) => p.y);
+        const pad = style.size + 4;
+        const minX = Math.min(...xs) - pad;
+        const minY = Math.min(...ys) - pad;
+        const maxX = Math.max(...xs) + pad;
+        const maxY = Math.max(...ys) + pad;
+        const relPts = pts.map(
+          (p) => [p.x - minX, p.y - minY, p.pressure ?? 0.5] as [number, number, number]
+        );
+        const outline = getStrokeOutline(
+          pts.map((p) => ({ x: p.x - minX, y: p.y - minY, pressure: p.pressure })),
+          { size: style.size }
+        );
+        const pathPreview =
+          outline.length > 0
+            ? outline.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")
+            : "";
+        const payload = JSON.stringify({
+          kind: "freehand",
+          label: "",
+          freehand: {
+            points: relPts,
+            size: style.size,
+            color: style.color,
+            opacity: style.opacity,
+            brush,
+          },
+          pathPreview,
+        });
+        graph.getDataModel().beginUpdate();
+        try {
+          const cell = graph.insertVertex({
+            parent: graph.getDefaultParent(),
+            id: crypto.randomUUID(),
+            value: payload,
+            position: [minX, minY],
+            size: [Math.max(8, maxX - minX), Math.max(8, maxY - minY)],
+            style: {
+              shape: "rectangle",
+              fillColor: "none",
+              strokeColor: style.color,
+              strokeWidth: Math.max(1, style.size / 2),
+              opacity: Math.round(style.opacity * 100),
+              rounded: true,
+              fontSize: 1,
+              fontColor: "none",
+            },
+          });
+          (cell.getStyle() as Record<string, unknown>).diagramKind = "freehand";
+          graph.getDataModel().setStyle(cell, {
+            ...(cell.getStyle() ?? {}),
+            diagramKind: "freehand",
+          } as CellStyle);
+        } finally {
+          graph.getDataModel().endUpdate();
+        }
+        onDirtyRef.current?.();
+      },
+      mouseMove: (_sender: unknown, me: { getCell: () => Cell | null; getEvent: () => MouseEvent }) => {
+        if (readOnlyRef.current) return;
+        if (freehandDrawingRef.current) {
+          const evt = me.getEvent();
+          const pt = clientToGraph(graph, host, evt.clientX, evt.clientY);
+          freehandPtsRef.current.push({ x: pt.x, y: pt.y, pressure: 0.5 });
+          return;
+        }
         if (paletteDirRef.current) return;
+        if (toolModeRef.current !== "select") return;
         const cell = me.getCell();
         if (cell?.isVertex()) updateHoverFromCell(cell);
         else if (!graph.getSelectionCells().some((c) => c.isVertex())) {
@@ -278,6 +464,10 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     return () => {
       host.removeEventListener("wheel", onWheel);
       graph.removeMouseListener(mouseListener as never);
+      if (flowTimerRef.current) {
+        clearInterval(flowTimerRef.current);
+        flowTimerRef.current = null;
+      }
       graph.destroy();
       graphRef.current = null;
       undoRef.current = null;
@@ -662,6 +852,536 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       graph.setCellsEditable(!ro);
       graph.setCellsResizable(!ro);
       graph.setCellsMovable(!ro);
+    },
+    runLayout: (kind) => {
+      const graph = graphRef.current;
+      if (!graph || readOnly) return;
+      const parent = graph.getDefaultParent();
+      graph.getDataModel().beginUpdate();
+      try {
+        if (kind === "vertical-flow" || kind === "horizontal-flow") {
+          const layout = new HierarchicalLayout(graph);
+          layout.orientation = kind === "horizontal-flow" ? "west" : "north";
+          layout.intraCellSpacing = 40;
+          layout.interRankCellSpacing = 60;
+          layout.execute(parent);
+        } else if (kind === "vertical-tree" || kind === "horizontal-tree") {
+          const layout = new CompactTreeLayout(graph, kind === "horizontal-tree");
+          layout.execute(parent);
+        } else if (kind === "radial") {
+          const layout = new RadialTreeLayout(graph);
+          layout.execute(parent);
+        } else if (kind === "organic") {
+          const layout = new FastOrganicLayout(graph);
+          layout.execute(parent);
+        } else if (kind === "circle") {
+          const layout = new CircleLayout(graph);
+          layout.execute(parent);
+        } else if (kind === "orthogonal") {
+          try {
+            const parallel = new ParallelEdgeLayout(graph);
+            parallel.execute(parent);
+          } catch {
+            /* optional */
+          }
+          const edges = graph.getChildEdges(parent);
+          for (const edge of edges) {
+            const style = { ...(edge.getStyle() ?? {}), edgeStyle: "orthogonalEdgeStyle", rounded: true };
+            graph.getDataModel().setStyle(edge, style);
+          }
+        }
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+      onDirty?.();
+    },
+    magicCleanup: () => {
+      const graph = graphRef.current;
+      if (!graph || readOnly) return;
+      const grid = graph.getGridSize() || 10;
+      const parent = graph.getDefaultParent();
+      const vertices = graph.getChildVertices(parent);
+      graph.getDataModel().beginUpdate();
+      try {
+        // Snap to grid
+        for (const cell of vertices) {
+          const g = cell.getGeometry()?.clone();
+          if (!g) continue;
+          g.x = snapToGrid(g.x, grid);
+          g.y = snapToGrid(g.y, grid);
+          g.width = snapToGrid(g.width, grid) || g.width;
+          g.height = snapToGrid(g.height, grid) || g.height;
+          graph.getDataModel().setGeometry(cell, g);
+        }
+        // Normalize widths of similar shapes (same shape + similar height)
+        const buckets = new Map<string, Cell[]>();
+        for (const cell of vertices) {
+          const style = cell.getStyle() ?? {};
+          const g = cell.getGeometry();
+          if (!g) continue;
+          const key = `${style.shape ?? "rectangle"}:${Math.round(g.height / 10) * 10}`;
+          const list = buckets.get(key) ?? [];
+          list.push(cell);
+          buckets.set(key, list);
+        }
+        for (const list of buckets.values()) {
+          if (list.length < 2) continue;
+          const widths = list.map((c) => c.getGeometry()!.width);
+          const avg = widths.reduce((a, b) => a + b, 0) / widths.length;
+          const target = snapToGrid(avg, grid) || avg;
+          for (const cell of list) {
+            const g = cell.getGeometry()!.clone();
+            if (Math.abs(g.width - target) < 40) {
+              g.width = target;
+              graph.getDataModel().setGeometry(cell, g);
+            }
+          }
+        }
+        const layout = new HierarchicalLayout(graph);
+        layout.orientation = "north";
+        layout.intraCellSpacing = 40;
+        layout.interRankCellSpacing = 60;
+        layout.execute(parent);
+        try {
+          new ParallelEdgeLayout(graph).execute(parent);
+        } catch {
+          /* optional */
+        }
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+      onDirty?.();
+    },
+    insertTable: (rows, cols, opts) => {
+      const graph = graphRef.current;
+      if (!graph || readOnly) return;
+      const r = Math.max(1, Math.min(20, rows));
+      const c = Math.max(1, Math.min(20, cols));
+      const cellW = 80;
+      const cellH = 28;
+      const titleH = opts?.title ? 32 : 0;
+      const pad = 8;
+      const w = c * cellW + pad * 2;
+      const h = titleH + r * cellH + pad * 2;
+      const x = 80 + Math.random() * 40;
+      const y = 80 + Math.random() * 40;
+      const cells = [];
+      for (let ri = 0; ri < r; ri++) {
+        for (let ci = 0; ci < c; ci++) {
+          cells.push({ r: ri, c: ci, text: ri === 0 ? `Col ${ci + 1}` : "" });
+        }
+      }
+      const labelLines = Array.from({ length: r }, (_, ri) =>
+        Array.from({ length: c }, (_, ci) => (ri === 0 ? `C${ci + 1}` : "·")).join(" | ")
+      );
+      const title = opts?.title ? "Table\n" : "";
+      const payload = JSON.stringify({
+        kind: "table",
+        label: `${title}${labelLines.join("\n")}`,
+        table: { rows: r, cols: c, cells },
+        container: opts?.container ? { title: "Table", childIds: [] } : undefined,
+      });
+      graph.getDataModel().beginUpdate();
+      try {
+        const parent = graph.getDefaultParent();
+        const vertex = graph.insertVertex({
+          parent,
+          id: crypto.randomUUID(),
+          value: payload,
+          position: [x, y],
+          size: [w, Math.max(h, 60)],
+          style: {
+            shape: opts?.container ? "swimlane" : "rectangle",
+            rounded: true,
+            fillColor: "#ffffff",
+            strokeColor: "#6c8ebf",
+            strokeWidth: 1.5,
+            fontSize: 11,
+            fontColor: "#334155",
+            align: "left",
+            verticalAlign: "top",
+            whiteSpace: "wrap",
+            startSize: opts?.title || opts?.container ? 28 : undefined,
+            diagramKind: "table",
+          } as CellStyle,
+        });
+        graph.setSelectionCell(vertex);
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+      onDirty?.();
+    },
+    insertContainer: (title = "Container") => {
+      const graph = graphRef.current;
+      if (!graph || readOnly) return;
+      const payload = JSON.stringify({
+        kind: "container",
+        label: title,
+        container: { title, collapsed: false, childIds: [] },
+      });
+      graph.getDataModel().beginUpdate();
+      try {
+        const cell = graph.insertVertex({
+          parent: graph.getDefaultParent(),
+          id: crypto.randomUUID(),
+          value: payload,
+          position: [100 + Math.random() * 40, 100 + Math.random() * 40],
+          size: [280, 180],
+          style: {
+            shape: "swimlane",
+            startSize: 28,
+            fillColor: "#f8fafc",
+            strokeColor: "#64748b",
+            strokeWidth: 1.5,
+            fontSize: 12,
+            fontColor: "#0f172a",
+            fontStyle: 1,
+            whiteSpace: "wrap",
+            diagramKind: "container",
+          } as CellStyle,
+        });
+        graph.setSelectionCell(cell);
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+      onDirty?.();
+    },
+    insertFreehand: (points, style) => {
+      const graph = graphRef.current;
+      if (!graph || readOnly || !points.length) return;
+      const xs = points.map((p) => p[0]);
+      const ys = points.map((p) => p[1]);
+      const pad = style.size + 4;
+      const minX = Math.min(...xs) - pad;
+      const minY = Math.min(...ys) - pad;
+      const maxX = Math.max(...xs) + pad;
+      const maxY = Math.max(...ys) + pad;
+      const relPts = points.map((p) => {
+        if (p.length >= 3) return [p[0]! - minX, p[1]! - minY, p[2]!] as [number, number, number];
+        return [p[0]! - minX, p[1]! - minY] as [number, number];
+      });
+      const payload = JSON.stringify({
+        kind: "freehand",
+        label: "",
+        freehand: {
+          points: relPts,
+          size: style.size,
+          color: style.color,
+          opacity: style.opacity,
+          brush: style.brush,
+        },
+      });
+      graph.insertVertex({
+        parent: graph.getDefaultParent(),
+        id: crypto.randomUUID(),
+        value: payload,
+        position: [minX, minY],
+        size: [Math.max(8, maxX - minX), Math.max(8, maxY - minY)],
+        style: {
+          shape: "rectangle",
+          fillColor: "none",
+          strokeColor: style.color,
+          strokeWidth: Math.max(1, style.size / 2),
+          opacity: Math.round(style.opacity * 100),
+          rounded: true,
+          diagramKind: "freehand",
+        } as CellStyle,
+      });
+      onDirty?.();
+    },
+    setToolMode: (mode) => {
+      toolModeRef.current = mode;
+      const graph = graphRef.current;
+      if (!graph) return;
+      const drawing = mode === "pen" || mode === "brush" || mode === "eraser";
+      graph.setPanning(!drawing);
+      const connectable = !readOnlyRef.current && (mode === "connector" || mode === "arrow" || mode === "select");
+      graph.setConnectable(connectable && !drawing);
+      const ch = graph.getPlugin("ConnectionHandler") as { setEnabled?: (v: boolean) => void } | null;
+      ch?.setEnabled?.(connectable && !drawing);
+      if (drawing) {
+        setHoverUi(null);
+        setPaletteDir(null);
+      }
+    },
+    setPenStyle: (style) => {
+      penStyleRef.current = {
+        size: style.size,
+        color: style.color,
+        opacity: style.opacity,
+        brush: style.brush ?? penStyleRef.current.brush,
+      };
+    },
+    focusNodes: (ids) => {
+      const graph = graphRef.current;
+      if (!graph || !ids.length) return;
+      const cells = ids
+        .map((id) => graph.getDataModel().getCell(id))
+        .filter((c): c is Cell => Boolean(c));
+      if (!cells.length) return;
+      graph.setSelectionCells(cells);
+      graph.scrollCellToVisible(cells[0]!);
+    },
+    setFocusMode: (on, seedIds) => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      focusModeRef.current = on;
+      focusSeedRef.current = seedIds ?? [];
+      const parent = graph.getDefaultParent();
+      const vertices = graph.getChildVertices(parent);
+      const edges = graph.getChildEdges(parent);
+      if (!on) {
+        graph.getDataModel().beginUpdate();
+        try {
+          for (const cell of [...vertices, ...edges]) {
+            const style = { ...(cell.getStyle() ?? {}), opacity: 100 };
+            graph.getDataModel().setStyle(cell, style);
+          }
+        } finally {
+          graph.getDataModel().endUpdate();
+        }
+        return;
+      }
+      const seeds = new Set(seedIds ?? []);
+      if (!seeds.size) {
+        for (const c of graph.getSelectionCells()) {
+          const id = c.getId();
+          if (id) seeds.add(id);
+        }
+      }
+      const highlight = new Set(seeds);
+      for (const edge of edges) {
+        const s = edge.getTerminal(true)?.getId();
+        const t = edge.getTerminal(false)?.getId();
+        if (s && seeds.has(s)) {
+          highlight.add(s);
+          if (t) highlight.add(t);
+          highlight.add(edge.getId() || "");
+        } else if (t && seeds.has(t)) {
+          highlight.add(t);
+          if (s) highlight.add(s);
+          highlight.add(edge.getId() || "");
+        }
+      }
+      graph.getDataModel().beginUpdate();
+      try {
+        for (const cell of [...vertices, ...edges]) {
+          const id = cell.getId() || "";
+          const opacity = highlight.has(id) ? 100 : 20;
+          graph.getDataModel().setStyle(cell, { ...(cell.getStyle() ?? {}), opacity });
+        }
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+    },
+    playFlow: () => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      if (flowTimerRef.current) clearInterval(flowTimerRef.current);
+      const edges = graph.getChildEdges(graph.getDefaultParent());
+      flowEdgesRef.current = edges;
+      flowOrigStylesRef.current = new Map(
+        edges.map((e) => [e.getId() || "", { ...(e.getStyle() ?? {}) }])
+      );
+      if (!edges.length) return;
+      const tick = () => {
+        const g = graphRef.current;
+        if (!g) return;
+        const list = flowEdgesRef.current;
+        if (!list.length) return;
+        // reset previous
+        for (const e of list) {
+          const id = e.getId() || "";
+          const orig = flowOrigStylesRef.current.get(id);
+          if (orig) g.getDataModel().setStyle(e, { ...orig });
+        }
+        const idx = flowIndexRef.current % list.length;
+        const edge = list[idx]!;
+        const style = {
+          ...(edge.getStyle() ?? {}),
+          strokeColor: "#2563eb",
+          strokeWidth: 3,
+        };
+        g.getDataModel().setStyle(edge, style);
+        flowIndexRef.current = idx + 1;
+        if (flowIndexRef.current >= list.length) flowIndexRef.current = 0;
+      };
+      tick();
+      const ms = Math.max(150, 800 / flowSpeedRef.current);
+      flowTimerRef.current = setInterval(tick, ms);
+    },
+    pauseFlow: () => {
+      if (flowTimerRef.current) {
+        clearInterval(flowTimerRef.current);
+        flowTimerRef.current = null;
+      }
+    },
+    restartFlow: () => {
+      flowIndexRef.current = 0;
+      const graph = graphRef.current;
+      if (graph) {
+        for (const e of flowEdgesRef.current) {
+          const id = e.getId() || "";
+          const orig = flowOrigStylesRef.current.get(id);
+          if (orig) graph.getDataModel().setStyle(e, { ...orig });
+        }
+      }
+      if (flowTimerRef.current) {
+        clearInterval(flowTimerRef.current);
+        flowTimerRef.current = null;
+      }
+      const g = graphRef.current;
+      if (!g) return;
+      const edges = g.getChildEdges(g.getDefaultParent());
+      flowEdgesRef.current = edges;
+      flowOrigStylesRef.current = new Map(
+        edges.map((e) => [e.getId() || "", { ...(e.getStyle() ?? {}) }])
+      );
+      const tick = () => {
+        const graph2 = graphRef.current;
+        if (!graph2) return;
+        const list = flowEdgesRef.current;
+        for (const e of list) {
+          const id = e.getId() || "";
+          const orig = flowOrigStylesRef.current.get(id);
+          if (orig) graph2.getDataModel().setStyle(e, { ...orig });
+        }
+        if (!list.length) return;
+        const idx = flowIndexRef.current % list.length;
+        const edge = list[idx]!;
+        graph2.getDataModel().setStyle(edge, {
+          ...(edge.getStyle() ?? {}),
+          strokeColor: "#2563eb",
+          strokeWidth: 3,
+        });
+        flowIndexRef.current = (idx + 1) % list.length;
+      };
+      tick();
+      flowTimerRef.current = setInterval(tick, Math.max(150, 800 / flowSpeedRef.current));
+    },
+    stepFlow: () => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      if (flowTimerRef.current) {
+        clearInterval(flowTimerRef.current);
+        flowTimerRef.current = null;
+      }
+      let list = flowEdgesRef.current;
+      if (!list.length) {
+        list = graph.getChildEdges(graph.getDefaultParent());
+        flowEdgesRef.current = list;
+        flowOrigStylesRef.current = new Map(
+          list.map((e) => [e.getId() || "", { ...(e.getStyle() ?? {}) }])
+        );
+      }
+      if (!list.length) return;
+      for (const e of list) {
+        const id = e.getId() || "";
+        const orig = flowOrigStylesRef.current.get(id);
+        if (orig) graph.getDataModel().setStyle(e, { ...orig });
+      }
+      const idx = flowIndexRef.current % list.length;
+      const edge = list[idx]!;
+      graph.getDataModel().setStyle(edge, {
+        ...(edge.getStyle() ?? {}),
+        strokeColor: "#2563eb",
+        strokeWidth: 3,
+      });
+      flowIndexRef.current = (idx + 1) % list.length;
+    },
+    setFlowSpeed: (s) => {
+      flowSpeedRef.current = Math.max(0.25, Math.min(3, s));
+      if (flowTimerRef.current) {
+        clearInterval(flowTimerRef.current);
+        const tick = () => {
+          const g = graphRef.current;
+          if (!g) return;
+          const list = flowEdgesRef.current;
+          for (const e of list) {
+            const id = e.getId() || "";
+            const orig = flowOrigStylesRef.current.get(id);
+            if (orig) g.getDataModel().setStyle(e, { ...orig });
+          }
+          if (!list.length) return;
+          const idx = flowIndexRef.current % list.length;
+          const edge = list[idx]!;
+          g.getDataModel().setStyle(edge, {
+            ...(edge.getStyle() ?? {}),
+            strokeColor: "#2563eb",
+            strokeWidth: 3,
+          });
+          flowIndexRef.current = (idx + 1) % list.length;
+        };
+        flowTimerRef.current = setInterval(tick, Math.max(150, 800 / flowSpeedRef.current));
+      }
+    },
+    getSelectionBounds: () => {
+      const graph = graphRef.current;
+      const root = rootRef.current;
+      if (!graph || !root) return null;
+      const cells = graph.getSelectionCells().filter((c) => c.isVertex());
+      if (!cells.length) return null;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const cell of cells) {
+        const state = graph.getView().getState(cell);
+        if (!state) continue;
+        minX = Math.min(minX, state.x);
+        minY = Math.min(minY, state.y);
+        maxX = Math.max(maxX, state.x + state.width);
+        maxY = Math.max(maxY, state.y + state.height);
+      }
+      if (!Number.isFinite(minX)) return null;
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    },
+    lockSelection: (locked) => {
+      const graph = graphRef.current;
+      if (!graph || readOnly) return;
+      const cells = graph.getSelectionCells();
+      graph.getDataModel().beginUpdate();
+      try {
+        for (const cell of cells) {
+          const style = {
+            ...(cell.getStyle() ?? {}),
+            diagramLocked: locked ? "1" : "0",
+          } as CellStyle;
+          graph.getDataModel().setStyle(cell, style);
+          cell.setConnectable(!locked);
+          if (locked) {
+            // prevent move via style editable flag when possible
+            (style as Record<string, unknown>).movable = false;
+          }
+        }
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+      onDirty?.();
+    },
+    groupSelection: () => {
+      const graph = graphRef.current;
+      if (!graph || readOnly) return;
+      const cells = graph.getSelectionCells().filter((c) => c.isVertex());
+      if (cells.length < 2) return;
+      try {
+        const group = graph.groupCells(null as unknown as Cell, 8, cells);
+        graph.setSelectionCell(group);
+        onDirty?.();
+      } catch {
+        /* grouping may fail without group cell */
+      }
+    },
+    ungroupSelection: () => {
+      const graph = graphRef.current;
+      if (!graph || readOnly) return;
+      try {
+        const cells = graph.ungroupCells(graph.getSelectionCells());
+        if (cells?.length) graph.setSelectionCells(cells);
+        onDirty?.();
+      } catch {
+        /* ignore */
+      }
     },
   }));
 

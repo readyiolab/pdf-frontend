@@ -4,11 +4,10 @@ import { FolderPlus, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { lettersApi } from "@/services/lettersApi";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   diagramsApi,
-  getDiagramOrgId,
-  setDiagramOrgId,
+  withDiagramOrgRetry,
   type DiagramFolder,
   type DiagramRow,
 } from "@/services/diagramsApi";
@@ -16,7 +15,8 @@ import { cn } from "@/lib/utils";
 
 export default function DiagramsListPage() {
   const navigate = useNavigate();
-  const [orgId, setOrgId] = useState<string | null>(getDiagramOrgId());
+  const { user } = useAuth();
+  const [orgId, setOrgId] = useState<string | null>(null);
   const [diagrams, setDiagrams] = useState<DiagramRow[]>([]);
   const [folders, setFolders] = useState<DiagramFolder[]>([]);
   const [folderId, setFolderId] = useState<string | null>(null);
@@ -30,24 +30,20 @@ export default function DiagramsListPage() {
     (async () => {
       try {
         setLoading(true);
-        let oid = getDiagramOrgId();
-        if (!oid) {
-          const boot = await lettersApi.bootstrap();
-          oid = boot.org.organization.id as string;
-          setDiagramOrgId(oid);
-        }
-        if (!oid) throw new Error("Organization is required");
+        setError(null);
+        const { orgId: oid, result } = await withDiagramOrgRetry(user?.id, async (id) => {
+          const [d, f] = await Promise.all([
+            diagramsApi.list(id, folderId),
+            diagramsApi.listFolders(id),
+          ]);
+          return { d, f };
+        });
         if (cancelled) return;
         setOrgId(oid);
-        const [d, f] = await Promise.all([
-          diagramsApi.list(oid, folderId),
-          diagramsApi.listFolders(oid),
-        ]);
-        if (cancelled) return;
-        setDiagrams(d.diagrams);
-        setFolders(f.folders);
+        setDiagrams(result.d.diagrams);
+        setFolders(result.f.folders);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load diagrams");
+        if (!cancelled) setError(e?.message || "Couldn't load diagrams");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -55,17 +51,20 @@ export default function DiagramsListPage() {
     return () => {
       cancelled = true;
     };
-  }, [folderId]);
+  }, [folderId, user?.id]);
 
   const createDiagram = async () => {
     if (!orgId || creating) return;
     setCreating(true);
     try {
-      const { diagram } = await diagramsApi.create(orgId, {
-        title: "Untitled Diagram",
-        folderId,
-      });
-      navigate(`/diagrams/${diagram.id}`);
+      const { orgId: oid, result } = await withDiagramOrgRetry(user?.id, (id) =>
+        diagramsApi.create(id, {
+          title: "Untitled Diagram",
+          folderId,
+        })
+      );
+      setOrgId(oid);
+      navigate(`/diagrams/${result.diagram.id}`);
     } catch (e: any) {
       setError(e?.message || "Could not create diagram");
       setCreating(false);

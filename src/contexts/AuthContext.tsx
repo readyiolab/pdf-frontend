@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import { apiService, type User } from "../services/api";
+import { clearDiagramOrgId } from "../services/diagramsApi";
 
 interface AuthContextType {
   user: User | null;
@@ -62,20 +63,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // That was painting a second full-page spinner over the auth modal.
 
   const login = useCallback(async (email: string, password: string) => {
+    clearDiagramOrgId();
     applySession(await apiService.login(email, password));
   }, [applySession]);
 
   const register = useCallback(async (email: string, name: string, password: string) => {
+    clearDiagramOrgId();
     applySession(await apiService.register(email, name, password));
   }, [applySession]);
 
   const googleLogin = useCallback(async (data: { credential: string }) => {
+    clearDiagramOrgId();
     applySession(await apiService.googleLogin(data));
   }, [applySession]);
 
   const logout = useCallback(() => {
     apiService.logout().catch(() => undefined);
     localStorage.removeItem("saas_jwt_token");
+    clearDiagramOrgId();
     setToken(null);
     setUser(null);
   }, []);

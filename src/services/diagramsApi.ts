@@ -1,20 +1,65 @@
-import { apiFetch } from "./api";
+import { apiFetch, ApiError } from "./api";
 import type { DiagramDocument, DiagramPage } from "@/lib/diagram/model";
+import { lettersApi } from "./lettersApi";
 
 const ORG_HEADER = "X-Organization-Id";
 const ORG_KEY = "letter_org_id";
+const ORG_USER_KEY = "letter_org_user_id";
+const AI_TIMEOUT_MS = 90_000;
 
 function orgHeaders(organizationId?: string | null): HeadersInit {
   if (!organizationId) return {};
   return { [ORG_HEADER]: organizationId };
 }
 
-export function getDiagramOrgId(): string | null {
-  return localStorage.getItem(ORG_KEY);
+/** Read org id only if it belongs to the current user (prevents cross-account leak). */
+export function getDiagramOrgId(userId?: string | null): string | null {
+  const storedUser = localStorage.getItem(ORG_USER_KEY);
+  const orgId = localStorage.getItem(ORG_KEY);
+  if (!orgId) return null;
+  if (userId && storedUser && storedUser !== userId) return null;
+  return orgId;
 }
 
-export function setDiagramOrgId(id: string) {
+export function setDiagramOrgId(id: string, userId?: string | null) {
   localStorage.setItem(ORG_KEY, id);
+  if (userId) localStorage.setItem(ORG_USER_KEY, userId);
+}
+
+export function clearDiagramOrgId() {
+  localStorage.removeItem(ORG_KEY);
+  localStorage.removeItem(ORG_USER_KEY);
+}
+
+function isMembershipError(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 403) return false;
+  return /not a member of this organization/i.test(err.message);
+}
+
+/** Bootstrap (or re-bootstrap) the active org for the current user. */
+export async function ensureDiagramOrg(userId?: string | null): Promise<string> {
+  let oid = getDiagramOrgId(userId);
+  if (oid) return oid;
+  const boot = await lettersApi.bootstrap();
+  oid = boot.org.organization.id as string;
+  setDiagramOrgId(oid, userId);
+  return oid;
+}
+
+/** Run an org-scoped call; on stale-org 403, clear + re-bootstrap and retry once. */
+export async function withDiagramOrgRetry<T>(
+  userId: string | null | undefined,
+  run: (orgId: string) => Promise<T>
+): Promise<{ orgId: string; result: T }> {
+  let orgId = await ensureDiagramOrg(userId);
+  try {
+    return { orgId, result: await run(orgId) };
+  } catch (err) {
+    if (!isMembershipError(err)) throw err;
+    clearDiagramOrgId();
+    orgId = await ensureDiagramOrg(userId);
+    return { orgId, result: await run(orgId) };
+  }
 }
 
 export type DiagramRow = {
@@ -46,6 +91,21 @@ export type DiagramShare = {
   revokedAt: string | null;
   createdAt: string;
   url?: string;
+};
+
+export type DiagramIssue = {
+  severity: "error" | "warning" | "info";
+  kind: string;
+  message: string;
+  nodeIds?: string[];
+  edgeIds?: string[];
+};
+
+export type ExplainStep = {
+  index: number;
+  title: string;
+  detail: string;
+  nodeIds: string[];
 };
 
 export const diagramsApi = {
@@ -102,7 +162,9 @@ export const diagramsApi = {
   listVersions(organizationId: string, id: string) {
     return apiFetch(`/diagrams/${id}/versions`, {
       headers: orgHeaders(organizationId),
-    }) as Promise<{ versions: Array<{ id: string; version: number; createdAt: string; createdBy: string }> }>;
+    }) as Promise<{
+      versions: Array<{ id: string; version: number; createdAt: string; createdBy: string; contentJson?: string }>;
+    }>;
   },
 
   restoreVersion(organizationId: string, id: string, version: number) {
@@ -181,6 +243,7 @@ export const diagramsApi = {
       method: "POST",
       headers: orgHeaders(organizationId),
       body: JSON.stringify({ prompt }),
+      timeoutMs: AI_TIMEOUT_MS,
     }) as Promise<{ document: DiagramDocument }>;
   },
 
@@ -189,6 +252,7 @@ export const diagramsApi = {
       method: "POST",
       headers: orgHeaders(organizationId),
       body: JSON.stringify({ instruction, page }),
+      timeoutMs: AI_TIMEOUT_MS,
     }) as Promise<{ patch: unknown[]; page: DiagramPage }>;
   },
 
@@ -200,6 +264,53 @@ export const diagramsApi = {
       method: "POST",
       headers: orgHeaders(organizationId),
       body: JSON.stringify(payload),
+      timeoutMs: AI_TIMEOUT_MS,
     }) as Promise<{ document: DiagramDocument }>;
+  },
+
+  aiAnalyze(organizationId: string, id: string, page: DiagramPage) {
+    return apiFetch(`/diagrams/${id}/ai/analyze`, {
+      method: "POST",
+      headers: orgHeaders(organizationId),
+      body: JSON.stringify({ page }),
+      timeoutMs: AI_TIMEOUT_MS,
+    }) as Promise<{ issues: DiagramIssue[] }>;
+  },
+
+  aiExplain(organizationId: string, id: string, page: DiagramPage) {
+    return apiFetch(`/diagrams/${id}/ai/explain`, {
+      method: "POST",
+      headers: orgHeaders(organizationId),
+      body: JSON.stringify({ page }),
+      timeoutMs: AI_TIMEOUT_MS,
+    }) as Promise<{ steps: ExplainStep[]; summary: string }>;
+  },
+
+  aiExplainSelection(
+    organizationId: string,
+    id: string,
+    page: DiagramPage,
+    nodeIds: string[]
+  ) {
+    return apiFetch(`/diagrams/${id}/ai/explain-selection`, {
+      method: "POST",
+      headers: orgHeaders(organizationId),
+      body: JSON.stringify({ page, nodeIds }),
+      timeoutMs: AI_TIMEOUT_MS,
+    }) as Promise<{ explanation: string }>;
+  },
+
+  aiDiffSummary(
+    organizationId: string,
+    id: string,
+    fromVersion: number,
+    toVersion: number
+  ) {
+    return apiFetch(`/diagrams/${id}/ai/diff-summary`, {
+      method: "POST",
+      headers: orgHeaders(organizationId),
+      body: JSON.stringify({ fromVersion, toVersion }),
+      timeoutMs: AI_TIMEOUT_MS,
+    }) as Promise<{ summary: string }>;
   },
 };

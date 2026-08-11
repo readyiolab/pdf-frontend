@@ -38,7 +38,17 @@ class ApiError extends Error {
   }
 }
 
-async function fetchWithRetry(url: string, options: RequestInit, retries: number = 3): Promise<Response> {
+export type ApiFetchOptions = RequestInit & {
+  /** Override default 15s abort timeout (ms). */
+  timeoutMs?: number;
+};
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries: number = 3,
+  timeoutMs: number = 15000
+): Promise<Response> {
   let lastError: Error | null = null;
 
   for (let i = 0; i < retries; i++) {
@@ -48,7 +58,7 @@ async function fetchWithRetry(url: string, options: RequestInit, retries: number
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
         const response = await fetch(url, {
@@ -86,21 +96,27 @@ async function fetchWithRetry(url: string, options: RequestInit, retries: number
  * modules (see services/signingApi.ts) reuse this behaviour instead of
  * reimplementing it.
  */
-export async function apiFetch(endpoint: string, options: RequestInit = {}) {
+export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
+  const { timeoutMs = 15000, ...fetchOptions } = options;
   const token = localStorage.getItem("saas_jwt_token");
   
-  const headers = new Headers(options.headers);
+  const headers = new Headers(fetchOptions.headers);
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
+  if (!headers.has("Content-Type") && !(fetchOptions.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetchWithRetry(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const response = await fetchWithRetry(
+    `${API_BASE_URL}${endpoint}`,
+    {
+      ...fetchOptions,
+      headers,
+    },
+    3,
+    timeoutMs
+  );
 
   const data = await response.json().catch(() => ({}));
 
@@ -123,6 +139,8 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}) {
 
   return data;
 }
+
+export { ApiError };
 
 export const apiService = {
   // Auth

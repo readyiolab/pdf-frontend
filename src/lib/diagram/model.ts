@@ -35,6 +35,42 @@ export const edgeStyleSchema = z.object({
   points: z.array(z.tuple([z.number(), z.number()])).optional(),
 });
 
+export const freehandPointSchema = z.union([
+  z.tuple([z.number(), z.number()]),
+  z.tuple([z.number(), z.number(), z.number()]),
+]);
+
+export const freehandSchema = z.object({
+  points: z.array(freehandPointSchema),
+  size: z.number(),
+  color: z.string(),
+  opacity: z.number(),
+  brush: z.enum(["pen", "brush"]),
+});
+
+export const tableCellSchema = z.object({
+  r: z.number(),
+  c: z.number(),
+  rowSpan: z.number().optional(),
+  colSpan: z.number().optional(),
+  text: z.string().optional(),
+  fill: z.string().optional(),
+});
+
+export const tableSchema = z.object({
+  rows: z.number(),
+  cols: z.number(),
+  cells: z.array(tableCellSchema),
+});
+
+export const containerSchema = z.object({
+  title: z.string().optional(),
+  collapsed: z.boolean().optional(),
+  childIds: z.array(z.string()).optional(),
+});
+
+export const nodeKindSchema = z.enum(["shape", "freehand", "table", "container", "text"]);
+
 export const diagramNodeSchema = z.object({
   id: z.string().min(1),
   label: z.string().default(""),
@@ -44,6 +80,12 @@ export const diagramNodeSchema = z.object({
   w: z.number().positive().default(120),
   h: z.number().positive().default(60),
   style: nodeStyleSchema.optional(),
+  kind: nodeKindSchema.optional().default("shape"),
+  locked: z.boolean().optional(),
+  groupId: z.string().optional(),
+  freehand: freehandSchema.optional(),
+  table: tableSchema.optional(),
+  container: containerSchema.optional(),
 });
 
 export const diagramEdgeSchema = z.object({
@@ -81,8 +123,10 @@ export const paperEnum = z.enum([
   "custom",
 ]);
 
+export const themeEnum = z.enum(["automatic", "classic", "simple", "minimal", "sketch", "atlas"]);
+
 export const diagramDocumentSchema = z.object({
-  version: z.literal(1).default(1),
+  version: z.union([z.literal(1), z.literal(2)]).default(2),
   pages: z.array(diagramPageSchema).min(1),
   settings: z
     .object({
@@ -96,17 +140,23 @@ export const diagramDocumentSchema = z.object({
       paper: paperEnum.optional(),
       pageWidth: z.number().optional(),
       pageHeight: z.number().optional(),
+      theme: themeEnum.optional(),
     })
     .optional(),
 });
 
 export type NodeStyle = z.infer<typeof nodeStyleSchema>;
 export type EdgeStyle = z.infer<typeof edgeStyleSchema>;
+export type FreehandData = z.infer<typeof freehandSchema>;
+export type TableData = z.infer<typeof tableSchema>;
+export type ContainerData = z.infer<typeof containerSchema>;
+export type NodeKind = z.infer<typeof nodeKindSchema>;
 export type DiagramNode = z.infer<typeof diagramNodeSchema>;
 export type DiagramEdge = z.infer<typeof diagramEdgeSchema>;
 export type DiagramPage = z.infer<typeof diagramPageSchema>;
 export type DiagramDocument = z.infer<typeof diagramDocumentSchema>;
 export type DiagramSettings = NonNullable<DiagramDocument["settings"]>;
+export type ThemeId = z.infer<typeof themeEnum>;
 
 export const PAPER_SIZES = {
   a0: { w: 3179, h: 4494, label: "A0" },
@@ -129,9 +179,79 @@ export const PAPER_SIZES = {
 
 export type PaperKey = keyof typeof PAPER_SIZES;
 
+/** Cell value payload for non-shape kinds (serialized as JSON string). */
+type CellValuePayload = {
+  kind: NodeKind;
+  label?: string;
+  freehand?: FreehandData;
+  table?: TableData;
+  container?: ContainerData;
+};
+
+function isCellValuePayload(v: unknown): v is CellValuePayload {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "kind" in v &&
+    typeof (v as CellValuePayload).kind === "string"
+  );
+}
+
+function parseCellValue(raw: unknown): {
+  label: string;
+  kind: NodeKind;
+  freehand?: FreehandData;
+  table?: TableData;
+  container?: ContainerData;
+} {
+  if (raw == null) return { label: "", kind: "shape" };
+  if (typeof raw === "object" && isCellValuePayload(raw)) {
+    return {
+      label: raw.label ?? "",
+      kind: raw.kind,
+      freehand: raw.freehand,
+      table: raw.table,
+      container: raw.container,
+    };
+  }
+  const str = String(raw);
+  if (str.startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(str);
+      if (isCellValuePayload(parsed)) {
+        return {
+          label: parsed.label ?? "",
+          kind: parsed.kind,
+          freehand: parsed.freehand,
+          table: parsed.table,
+          container: parsed.container,
+        };
+      }
+    } catch {
+      /* plain label that happens to start with { */
+    }
+  }
+  return { label: str, kind: "shape" };
+}
+
+function encodeCellValue(node: DiagramNode): string {
+  const kind = node.kind ?? "shape";
+  if (kind === "shape" || kind === "text") {
+    return node.label ?? "";
+  }
+  const payload: CellValuePayload = {
+    kind,
+    label: node.label ?? "",
+  };
+  if (node.freehand) payload.freehand = node.freehand;
+  if (node.table) payload.table = node.table;
+  if (node.container) payload.container = node.container;
+  return JSON.stringify(payload);
+}
+
 export function emptyDocument(_title = "Untitled Diagram"): DiagramDocument {
   return {
-    version: 1,
+    version: 2,
     pages: [{ id: crypto.randomUUID(), name: "Page-1", nodes: [], edges: [] }],
     settings: {
       grid: true,
@@ -144,12 +264,33 @@ export function emptyDocument(_title = "Untitled Diagram"): DiagramDocument {
       paper: "a4-portrait",
       pageWidth: PAPER_SIZES["a4-portrait"].w,
       pageHeight: PAPER_SIZES["a4-portrait"].h,
+      theme: "automatic",
     },
   };
 }
 
 export function emptyPage(name = "Page-1"): DiagramPage {
   return { id: crypto.randomUUID(), name, nodes: [], edges: [] };
+}
+
+/** Upgrade a v1 (or partially migrated) document to DiagramDocument v2. */
+export function upgradeDocument(doc: DiagramDocument): DiagramDocument {
+  const pages = doc.pages.map((page) => ({
+    ...page,
+    nodes: page.nodes.map((node) => ({
+      ...node,
+      kind: node.kind ?? "shape",
+    })),
+  }));
+  return {
+    ...doc,
+    version: 2,
+    pages,
+    settings: {
+      ...doc.settings,
+      theme: doc.settings?.theme ?? "automatic",
+    },
+  };
 }
 
 function shapeToMaxStyle(shape: string): Partial<CellStyle> {
@@ -183,7 +324,8 @@ function shapeToMaxStyle(shape: string): Partial<CellStyle> {
 
 function nodeToCellStyle(node: DiagramNode): CellStyle {
   const s = node.style ?? {};
-  return {
+  const kind = node.kind ?? "shape";
+  const base: CellStyle = {
     ...shapeToMaxStyle(node.shape),
     fillColor: s.fill ?? "#dae8fc",
     strokeColor: s.stroke ?? "#6c8ebf",
@@ -200,6 +342,11 @@ function nodeToCellStyle(node: DiagramNode): CellStyle {
     whiteSpace: "wrap",
     ...(typeof s.rotation === "number" ? { rotation: s.rotation } : {}),
   };
+  // Persist kind / lock / group as style string props for round-trip hints
+  (base as Record<string, unknown>).diagramKind = kind;
+  if (node.locked != null) (base as Record<string, unknown>).diagramLocked = node.locked ? "1" : "0";
+  if (node.groupId) (base as Record<string, unknown>).diagramGroupId = node.groupId;
+  return base;
 }
 
 function edgeToCellStyle(edge: DiagramEdge): CellStyle {
@@ -244,12 +391,13 @@ export function toMaxGraph(graph: Graph, page: DiagramPage): void {
       const cell = graph.insertVertex({
         parent,
         id: node.id,
-        value: node.label ?? "",
+        value: encodeCellValue(node),
         position: [node.x, node.y],
         size: [node.w, node.h],
         style: nodeToCellStyle(node),
       });
       cell.setId(node.id);
+      if (node.locked) cell.setConnectable(false);
       byId.set(node.id, cell);
     }
 
@@ -296,14 +444,32 @@ export function fromMaxGraph(graph: Graph, pageMeta: Pick<DiagramPage, "id" | "n
   const nodes: DiagramNode[] = vertices.map((cell) => {
     const geo = cell.getGeometry();
     const style = cell.getStyle() ?? {};
+    const styleRec = style as Record<string, unknown>;
+    const parsed = parseCellValue(cell.getValue());
+    const kindFromStyle = typeof styleRec.diagramKind === "string" ? styleRec.diagramKind : undefined;
+    const kind = (kindFromStyle as NodeKind | undefined) ?? parsed.kind;
+    const locked =
+      styleRec.diagramLocked === "1" || styleRec.diagramLocked === true
+        ? true
+        : styleRec.diagramLocked === "0" || styleRec.diagramLocked === false
+          ? false
+          : undefined;
+    const groupId = typeof styleRec.diagramGroupId === "string" ? styleRec.diagramGroupId : undefined;
+
     return {
       id: cell.getId() || crypto.randomUUID(),
-      label: String(cell.getValue() ?? ""),
+      label: parsed.label,
       shape: cellShapeName(style),
       x: geo?.x ?? 0,
       y: geo?.y ?? 0,
       w: geo?.width ?? 120,
       h: geo?.height ?? 60,
+      kind,
+      locked,
+      groupId,
+      freehand: parsed.freehand,
+      table: parsed.table,
+      container: parsed.container,
       style: {
         fill: style.fillColor as string | undefined,
         stroke: style.strokeColor as string | undefined,
@@ -369,5 +535,5 @@ export function fromMaxGraph(graph: Graph, pageMeta: Pick<DiagramPage, "id" | "n
 }
 
 export function parseDocument(raw: unknown): DiagramDocument {
-  return diagramDocumentSchema.parse(raw);
+  return upgradeDocument(diagramDocumentSchema.parse(raw));
 }
