@@ -8,6 +8,109 @@ import { Spinner } from "../components/ui/spinner";
 import { User, Mail, CreditCard, Clock, LogOut, Shield, Copy, Check, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { apiService } from "@/services/api";
+
+function ContactAddressCard() {
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [form, setForm] = React.useState({
+    phone: "",
+    company: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "",
+  });
+
+  useEffect(() => {
+    apiService
+      .getTrackingProfile()
+      .then((data: any) => {
+        const p = data.profile || {};
+        setForm({
+          phone: p.phone || "",
+          company: p.company || "",
+          addressLine1: p.addressLine1 || "",
+          addressLine2: p.addressLine2 || "",
+          city: p.city || "",
+          state: p.state || "",
+          postalCode: p.postalCode || "",
+          country: p.country || "",
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await apiService.updateTrackingProfile(form);
+      toast.success("Contact details saved");
+    } catch (e: any) {
+      toast.error(e.message || "Could not save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((prev) => ({ ...prev, [key]: e.target.value }));
+
+  return (
+    <div className="rounded-2xl border bg-card p-6 shadow-sm">
+      <h2 className="text-lg font-bold mb-1">Contact &amp; address</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Optional billing / mailing details for your account.
+      </p>
+      {loading ? (
+        <Spinner className="h-5 w-5" />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label>Phone</Label>
+            <Input value={form.phone} onChange={set("phone")} />
+          </div>
+          <div className="space-y-1">
+            <Label>Company</Label>
+            <Input value={form.company} onChange={set("company")} />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <Label>Address line 1</Label>
+            <Input value={form.addressLine1} onChange={set("addressLine1")} />
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <Label>Address line 2</Label>
+            <Input value={form.addressLine2} onChange={set("addressLine2")} />
+          </div>
+          <div className="space-y-1">
+            <Label>City</Label>
+            <Input value={form.city} onChange={set("city")} />
+          </div>
+          <div className="space-y-1">
+            <Label>State</Label>
+            <Input value={form.state} onChange={set("state")} />
+          </div>
+          <div className="space-y-1">
+            <Label>Postal code</Label>
+            <Input value={form.postalCode} onChange={set("postalCode")} />
+          </div>
+          <div className="space-y-1">
+            <Label>Country</Label>
+            <Input value={form.country} onChange={set("country")} />
+          </div>
+          <div className="sm:col-span-2">
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save contact details"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export const Profile: React.FC = () => {
   const { user, loading, logout } = useAuth();
@@ -87,6 +190,8 @@ export const Profile: React.FC = () => {
               </div>
             </div>
           </div>
+
+          <ContactAddressCard />
 
           {!user.emailVerified && !user.isGuest && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 shadow-sm">

@@ -1,3 +1,5 @@
+import { getStoredAttribution } from "@/lib/tracking";
+
 export interface User {
   id: string;
   email: string;
@@ -144,14 +146,23 @@ export { ApiError };
 
 export const apiService = {
   // Auth
-  register: (email: string, name: string, password: string) => 
-    apiFetch("/auth/register", { method: "POST", body: JSON.stringify({ email, name, password }) }),
-  
+  register: (email: string, name: string, password: string) =>
+    apiFetch("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, name, password, attribution: getStoredAttribution() }),
+    }),
+
   login: (email: string, password: string) =>
-    apiFetch("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    apiFetch("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password, attribution: getStoredAttribution() }),
+    }),
 
   googleLogin: (data: { credential: string }) =>
-    apiFetch("/auth/google", { method: "POST", body: JSON.stringify(data) }),
+    apiFetch("/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ ...data, attribution: getStoredAttribution() }),
+    }),
 
   logout: () => apiFetch("/auth/logout", { method: "POST" }),
 
@@ -163,6 +174,11 @@ export const apiService = {
 
   // User
   getProfile: () => apiFetch("/users/me", { method: "GET" }),
+
+  getTrackingProfile: () => apiFetch("/tracking/profile", { method: "GET" }),
+
+  updateTrackingProfile: (body: Record<string, unknown>) =>
+    apiFetch("/tracking/profile", { method: "PATCH", body: JSON.stringify(body) }),
 
   // Upload
   getPresignedUrl: (fileName: string, contentType: string, fileSize: number) =>
