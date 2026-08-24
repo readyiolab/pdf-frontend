@@ -1,4 +1,4 @@
-import { apiFetch, API_BASE_URL } from "./api";
+import { apiFetch } from "./api";
 
 const ORG_HEADER = "X-Organization-Id";
 
@@ -192,27 +192,37 @@ export const lettersApi = {
   },
 
   async downloadPdfsZip(organizationId: string, batchId: string) {
-    const token = localStorage.getItem("saas_jwt_token");
-    const res = await fetch(
-      `${API_BASE_URL}/letters/batches/${batchId}/pdfs/zip`,
-      {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          "X-Organization-Id": organizationId,
-        },
+    const started = (await apiFetch(`/letters/batches/${batchId}/pdfs/zip`, {
+      method: "POST",
+      headers: orgHeaders(organizationId),
+    })) as { zipJobId: string };
+
+    const deadline = Date.now() + 10 * 60 * 1000;
+    while (Date.now() < deadline) {
+      const status = (await apiFetch(
+        `/letters/batches/${batchId}/pdfs/zip/${started.zipJobId}`,
+        { headers: orgHeaders(organizationId) }
+      )) as {
+        status: string;
+        url?: string;
+        fileName?: string;
+        error?: string;
+      };
+
+      if (status.status === "FAILED") {
+        throw new Error(status.error || "Could not build ZIP");
       }
-    );
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Could not download PDFs");
+      if (status.status === "COMPLETED" && status.url) {
+        const a = document.createElement("a");
+        a.href = status.url;
+        a.download = status.fileName || `letters-${batchId.slice(0, 8)}.zip`;
+        a.rel = "noopener";
+        a.click();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `letters-${batchId.slice(0, 8)}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    throw new Error("ZIP is taking too long. Please try again.");
   },
 
   retryFailedGenerate(organizationId: string, batchId: string) {

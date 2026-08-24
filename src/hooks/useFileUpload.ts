@@ -58,39 +58,57 @@ export function useFileUpload(multiple: boolean = false): UseFileUploadResult {
     // order — tools like Merge depend on keys matching the on-screen order.
     const uploadedKeys: string[] = new Array(files.length);
 
-    const uploadOne = async (i: number) => {
-      const file = files[i];
-      setUploadProgress((prev) => new Map(prev).set(i, 0));
-
-      const presign = await apiService.getPresignedUrl(
-        file.name,
-        file.type || "application/pdf",
-        file.size
-      );
-
-      await apiService.uploadFileToS3(file, presign.uploadUrl, (percent) => {
-        setUploadProgress((prev) => new Map(prev).set(i, percent));
-        onProgress?.(i, percent);
-      });
-
-      setUploadProgress((prev) => new Map(prev).set(i, 100));
-      uploadedKeys[i] = presign.fileKey;
+    const report = (i: number, percent: number) => {
+      setUploadProgress((prev) => new Map(prev).set(i, percent));
+      onProgress?.(i, percent);
     };
 
     try {
-      // Upload up to 3 files at a time instead of strictly one-after-another.
-      const CONCURRENCY = 3;
-      let nextIndex = 0;
-      const workers = Array.from(
-        { length: Math.min(CONCURRENCY, files.length) },
-        async () => {
-          while (nextIndex < files.length) {
-            const i = nextIndex++;
-            await uploadOne(i);
+      // Batch-presign small files in one API call; large files use multipart per file.
+      const smallIndexes: number[] = [];
+      const largeIndexes: number[] = [];
+      files.forEach((f, i) => {
+        if (f.size >= apiService.MULTIPART_THRESHOLD) largeIndexes.push(i);
+        else smallIndexes.push(i);
+      });
+
+      if (smallIndexes.length === 1) {
+        const i = smallIndexes[0];
+        report(i, 0);
+        uploadedKeys[i] = await apiService.uploadFileDirect(files[i], (pct) => report(i, pct));
+      } else if (smallIndexes.length > 1) {
+        const batch = await apiService.getPresignedUrlBatch(
+          smallIndexes.map((i) => ({
+            fileName: files[i].name,
+            contentType: files[i].type || "application/pdf",
+            fileSize: files[i].size,
+          }))
+        );
+
+        const CONCURRENCY = 3;
+        let next = 0;
+        const workers = Array.from(
+          { length: Math.min(CONCURRENCY, smallIndexes.length) },
+          async () => {
+            while (next < smallIndexes.length) {
+              const slot = next++;
+              const i = smallIndexes[slot];
+              const presign = batch.uploads[slot];
+              report(i, 0);
+              await apiService.uploadFileToS3(files[i], presign.uploadUrl, (pct) => report(i, pct));
+              report(i, 100);
+              uploadedKeys[i] = presign.fileKey;
+            }
           }
-        }
-      );
-      await Promise.all(workers);
+        );
+        await Promise.all(workers);
+      }
+
+      // Multipart large files (sequential across files, parallel parts inside).
+      for (const i of largeIndexes) {
+        report(i, 0);
+        uploadedKeys[i] = await apiService.uploadFileDirect(files[i], (pct) => report(i, pct));
+      }
 
       return uploadedKeys;
     } finally {

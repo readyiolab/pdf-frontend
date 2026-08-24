@@ -19,7 +19,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   ISSUE_LABELS,
   autoMapHeaders,
-  fileToBase64,
   unmappedRequired,
   type MappingSource,
 } from "@/lib/letterMapping";
@@ -223,9 +222,10 @@ export default function BatchWizardPage() {
     }
     setBusy(true);
     try {
-      const base64 = await fileToBase64(file);
+      const { apiService } = await import("@/services/api");
+      const sourceFileKey = await apiService.uploadFileDirect(file);
       const parsed = await lettersApi.parseUpload(orgId(), batchId, {
-        fileBase64: base64,
+        sourceFileKey,
         sourceFileName: file.name,
       });
       const fields = parsed.systemFields?.length
