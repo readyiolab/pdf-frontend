@@ -220,14 +220,14 @@ export const apiService = {
   MULTIPART_THRESHOLD: 16 * 1024 * 1024,
 
   // S3 direct upload using XMLHttpRequest to support progress tracking
-  uploadFileToS3: (
+  uploadFileToS3: async (
     file: File,
     uploadUrl: string,
     onProgress?: (percent: number) => void,
     opts?: { contentType?: string; timeoutMs?: number }
   ): Promise<void> => {
-    return putBlobToUrl(file, uploadUrl, {
-      contentType: opts?.contentType ?? file.type || "application/pdf",
+    await putBlobToUrl(file, uploadUrl, {
+      contentType: opts?.contentType ?? (file.type || "application/pdf"),
       onProgress,
       timeoutMs: opts?.timeoutMs ?? 300_000,
     });
