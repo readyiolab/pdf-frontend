@@ -226,11 +226,35 @@ export const apiService = {
     onProgress?: (percent: number) => void,
     opts?: { contentType?: string; timeoutMs?: number }
   ): Promise<void> => {
-    await putBlobToUrl(file, uploadUrl, {
-      contentType: opts?.contentType ?? (file.type || "application/pdf"),
-      onProgress,
-      timeoutMs: opts?.timeoutMs ?? 300_000,
-    });
+    if (/x-amz-checksum|x-amz-sdk-checksum/i.test(uploadUrl)) {
+      throw new Error(
+        "Upload URL is misconfigured (checksum params). Redeploy the API with the Spaces checksum fix, then try again."
+      );
+    }
+
+    // Assume ~32 KB/s worst-case uplink; never below 5 min or above 30 min.
+    const sizeBasedMs = Math.ceil(file.size / (32 * 1024)) * 1000;
+    const timeoutMs = opts?.timeoutMs ?? Math.min(1_800_000, Math.max(300_000, sizeBasedMs + 60_000));
+    const contentType = opts?.contentType ?? (file.type || "application/pdf");
+
+    let lastErr: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await putBlobToUrl(file, uploadUrl, {
+          contentType,
+          onProgress,
+          timeoutMs,
+        });
+        return;
+      } catch (err: any) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        const retryable =
+          /timed out|network error|Failed to upload/i.test(lastErr.message) && attempt < 2;
+        if (!retryable) throw lastErr;
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+    throw lastErr || new Error("Upload timed out.");
   },
 
   /**
@@ -350,7 +374,12 @@ function putBlobToUrl(
     };
 
     xhr.onerror = () => reject(new Error("Network error occurred during upload."));
-    xhr.ontimeout = () => reject(new Error("Upload timed out."));
+    xhr.ontimeout = () =>
+      reject(
+        new Error(
+          "Upload timed out. Check your connection, or retry — large files need a stable uplink to Spaces."
+        )
+      );
     xhr.timeout = opts.timeoutMs ?? 300_000;
     xhr.send(body);
   });
