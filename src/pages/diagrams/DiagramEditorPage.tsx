@@ -117,12 +117,20 @@ function DiagramEditorInner() {
   const [strokeColor, setStrokeColor] = useState("#6c8ebf");
   const loadedRef = useRef(false);
   const pageQueryApplied = useRef(false);
+  const contentRevisionRef = useRef(0);
 
   const settings: DiagramSettings = doc.settings ?? {};
   const activePage = useMemo(
     () => doc.pages.find((p) => p.id === activePageId) ?? doc.pages[0]!,
     [doc.pages, activePageId]
   );
+
+  // Bump when doc identity / page content from server or AI should reload canvas
+  const contentRevision = useMemo(() => {
+    return `${currentVersion ?? 0}|${doc.pages
+      .map((p) => `${p.id}:${p.nodes.length}:${p.edges.length}`)
+      .join("|")}`;
+  }, [doc.pages, currentVersion]);
 
   const aiOpen = tools.aiOpen;
   const setAiOpen = tools.setAiOpen;
@@ -144,7 +152,7 @@ function DiagramEditorInner() {
     return () => window.removeEventListener("diagram-tool-insert-text", onInsertText);
   }, [setDirty]);
 
-  // Load page into canvas when ready
+  // Load page into canvas when ready or when document content revision changes
   useEffect(() => {
     if (loading) return;
     const page = doc.pages.find((p) => p.id === activePageId);
@@ -152,9 +160,12 @@ function DiagramEditorInner() {
     const t = setTimeout(() => {
       canvasRef.current?.loadPage(page);
       loadedRef.current = true;
+      contentRevisionRef.current += 1;
     }, 50);
     return () => clearTimeout(t);
-  }, [loading, activePageId, diagramId]);
+    // contentRevision catches hydrate / restore / AI replace when page id stays same
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, activePageId, diagramId, contentRevision]);
 
   const syncActivePageFromCanvas = useCallback((): DiagramDocument => {
     const serialized = canvasRef.current?.serializePage({
@@ -455,11 +466,7 @@ function DiagramEditorInner() {
     if (!raw) return;
     try {
       const shape = JSON.parse(raw) as ShapeDef;
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      canvasRef.current?.addShape(shape, {
-        x: e.clientX - rect.left - 40,
-        y: e.clientY - rect.top - 40,
-      });
+      canvasRef.current?.addShapeAtClient(shape, e.clientX, e.clientY);
       setDirty(true);
     } catch {
       /* ignore */
@@ -777,8 +784,22 @@ function DiagramEditorInner() {
           disabled: !diagramId || !orgId,
           onClick: async () => {
             if (!orgId || !diagramId) return;
-            const { diagram } = await diagramsApi.duplicate(orgId, diagramId);
-            navigate(`/diagrams/${diagram.id}`);
+            try {
+              // Flush unsaved canvas into the current diagram first, then duplicate
+              const nextDoc = syncActivePageFromCanvas();
+              setDoc(nextDoc);
+              await withOrgRetry(user?.id, (id) =>
+                diagramsApi.update(id, diagramId, { title, content: nextDoc })
+              );
+              setDirty(false);
+              const { result } = await withOrgRetry(user?.id, (id) =>
+                diagramsApi.duplicate(id, diagramId)
+              );
+              navigate(`/diagrams/${result.diagram.id}`);
+              toast.success("Diagram duplicated");
+            } catch (e: unknown) {
+              toast.error(e instanceof Error ? e.message : "Save As failed");
+            }
           },
         },
         { type: "sep" as const },

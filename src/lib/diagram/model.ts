@@ -255,15 +255,32 @@ export function tableToHtml(table: TableData, title?: string): string {
   parts.push(
     `<table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;color:#334155">`
   );
+  const covered = new Set<string>();
   for (let ri = 0; ri < table.rows; ri++) {
     parts.push("<tr>");
     for (let ci = 0; ci < table.cols; ci++) {
+      if (covered.has(`${ri},${ci}`)) continue;
       const cell = table.cells.find((x) => x.r === ri && x.c === ci);
+      const rowSpan = Math.max(1, cell?.rowSpan ?? 1);
+      const colSpan = Math.max(1, cell?.colSpan ?? 1);
+      for (let dr = 0; dr < rowSpan; dr++) {
+        for (let dc = 0; dc < colSpan; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          covered.add(`${ri + dr},${ci + dc}`);
+        }
+      }
       const text = cell?.text?.trim() ? cell.text : ri === 0 ? `Col ${ci + 1}` : "";
       const tag = ri === 0 ? "th" : "td";
-      const bg = ri === 0 ? "background:#f1f5f9;" : "";
+      const fill = cell?.fill?.trim();
+      const bg = fill
+        ? `background:${escapeHtml(fill)};`
+        : ri === 0
+          ? "background:#f1f5f9;"
+          : "";
+      const spanAttrs =
+        `${rowSpan > 1 ? ` rowspan="${rowSpan}"` : ""}${colSpan > 1 ? ` colspan="${colSpan}"` : ""}`;
       parts.push(
-        `<${tag} style="border:1px solid #94a3b8;padding:4px 6px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${bg}">${
+        `<${tag}${spanAttrs} data-r="${ri}" data-c="${ci}" style="border:1px solid #94a3b8;padding:4px 6px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${bg}">${
           text ? escapeHtml(text) : "&nbsp;"
         }</${tag}>`
       );
@@ -272,6 +289,29 @@ export function tableToHtml(table: TableData, title?: string): string {
   }
   parts.push("</table>");
   return parts.join("");
+}
+
+/** Map a click inside a table vertex to a cell (row, col). */
+export function hitTestTableCell(
+  table: TableData,
+  localX: number,
+  localY: number,
+  box: { w: number; h: number; title?: boolean }
+): { r: number; c: number } | null {
+  const titleH = box.title ? 28 : 0;
+  const y = localY - titleH;
+  if (y < 0 || localX < 0 || localX > box.w || localY > box.h) return null;
+  const bodyH = Math.max(1, box.h - titleH);
+  const r = Math.min(table.rows - 1, Math.max(0, Math.floor((y / bodyH) * table.rows)));
+  const c = Math.min(table.cols - 1, Math.max(0, Math.floor((localX / box.w) * table.cols)));
+  return { r, c };
+}
+
+export function patchTableCellText(table: TableData, r: number, c: number, text: string): TableData {
+  const cells = table.cells.filter((x) => !(x.r === r && x.c === c));
+  const prev = table.cells.find((x) => x.r === r && x.c === c);
+  cells.push({ ...prev, r, c, text });
+  return { ...table, cells };
 }
 
 /** Display string / HTML for a cell value (never raw JSON). */
@@ -291,6 +331,37 @@ export function cellValueToDisplay(raw: unknown): string {
   return parsed.label ?? "";
 }
 
+function parseTableFromHtml(html: string, fallback: TableData): TableData {
+  if (typeof DOMParser === "undefined" || !html.includes("<table")) return fallback;
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const rows = Array.from(doc.querySelectorAll("table tr"));
+    if (!rows.length) return fallback;
+    const cells: TableData["cells"] = [];
+    let cols = fallback.cols;
+    rows.forEach((tr, r) => {
+      const tds = Array.from(tr.querySelectorAll("th,td"));
+      cols = Math.max(cols, tds.length);
+      tds.forEach((td, c) => {
+        const rs = Number(td.getAttribute("rowspan") || "1");
+        const cs = Number(td.getAttribute("colspan") || "1");
+        const fill = (td as HTMLElement).style?.backgroundColor || undefined;
+        cells.push({
+          r,
+          c,
+          text: (td.textContent ?? "").replace(/\u00a0/g, " ").trim(),
+          ...(rs > 1 ? { rowSpan: rs } : {}),
+          ...(cs > 1 ? { colSpan: cs } : {}),
+          ...(fill ? { fill } : {}),
+        });
+      });
+    });
+    return { rows: rows.length, cols, cells };
+  } catch {
+    return fallback;
+  }
+}
+
 /** Persist an edited label back into JSON payloads when needed. */
 export function encodeEditedCellValue(raw: unknown, newLabel: string): unknown {
   const parsed = parseCellValue(raw);
@@ -299,10 +370,15 @@ export function encodeEditedCellValue(raw: unknown, newLabel: string): unknown {
   }
   const payload: CellValuePayload = {
     kind: parsed.kind,
-    label: newLabel,
+    label: parsed.kind === "table" && newLabel.includes("<") ? parsed.label : newLabel,
   };
   if (parsed.freehand) payload.freehand = parsed.freehand;
-  if (parsed.table) payload.table = parsed.table;
+  if (parsed.table) {
+    payload.table = newLabel.includes("<table")
+      ? parseTableFromHtml(newLabel, parsed.table)
+      : parsed.table;
+    if (!newLabel.includes("<") && parsed.kind === "table") payload.label = newLabel;
+  }
   if (parsed.container) {
     payload.container = { ...parsed.container, title: newLabel || parsed.container.title };
   }
@@ -463,6 +539,25 @@ function edgeToCellStyle(edge: DiagramEdge): CellStyle {
   };
 }
 
+function sortNodesParentsFirst(nodes: DiagramNode[]): DiagramNode[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const visited = new Set<string>();
+  const out: DiagramNode[] = [];
+  const visit = (node: DiagramNode) => {
+    if (visited.has(node.id)) return;
+    visited.add(node.id);
+    if (node.groupId && byId.has(node.groupId)) visit(byId.get(node.groupId)!);
+    out.push(node);
+  };
+  for (const node of nodes) visit(node);
+  return out;
+}
+
+function clampSize(n: number | undefined, fallback: number): number {
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return fallback;
+  return n;
+}
+
 /** Clear the graph and render a page into it. */
 export function toMaxGraph(graph: Graph, page: DiagramPage): void {
   const model = graph.getDataModel();
@@ -473,13 +568,15 @@ export function toMaxGraph(graph: Graph, page: DiagramPage): void {
     if (cells.length) graph.removeCells(cells, true);
 
     const byId = new Map<string, Cell>();
-    for (const node of page.nodes) {
+    for (const node of sortNodesParentsFirst(page.nodes)) {
+      const insertParent =
+        (node.groupId && byId.get(node.groupId)) || parent;
       const cell = graph.insertVertex({
-        parent,
+        parent: insertParent,
         id: node.id,
         value: encodeCellValue(node),
         position: [node.x, node.y],
-        size: [node.w, node.h],
+        size: [clampSize(node.w, 120), clampSize(node.h, 60)],
         style: nodeToCellStyle(node),
       });
       cell.setId(node.id);
@@ -522,95 +619,133 @@ function cellShapeName(style: CellStyle): string {
   return shape;
 }
 
+function collectChildVertices(graph: Graph, parent: Cell, acc: Cell[]): void {
+  for (const cell of graph.getChildVertices(parent)) {
+    acc.push(cell);
+    collectChildVertices(graph, cell, acc);
+  }
+}
+
+function collectChildEdges(graph: Graph, parent: Cell, acc: Cell[]): void {
+  for (const cell of graph.getChildEdges(parent)) acc.push(cell);
+  for (const cell of graph.getChildVertices(parent)) collectChildEdges(graph, cell, acc);
+}
+
+function vertexToNode(graph: Graph, cell: Cell, defaultParent: Cell): DiagramNode {
+  const geo = cell.getGeometry();
+  const style = cell.getStyle() ?? {};
+  const styleRec = style as Record<string, unknown>;
+  const parsed = parseCellValue(cell.getValue());
+  const kindFromStyle = typeof styleRec.diagramKind === "string" ? styleRec.diagramKind : undefined;
+  let kind = (kindFromStyle as NodeKind | undefined) ?? parsed.kind;
+  const childVerts = graph.getChildVertices(cell);
+  const childIds = childVerts.map((c) => c.getId()).filter((id): id is string => Boolean(id));
+  if (kind === "shape" && childIds.length && !parsed.table && !parsed.freehand) {
+    kind = "container";
+  }
+  const locked =
+    styleRec.diagramLocked === "1" || styleRec.diagramLocked === true
+      ? true
+      : styleRec.diagramLocked === "0" || styleRec.diagramLocked === false
+        ? false
+        : undefined;
+  const parentCell = cell.getParent();
+  const groupId =
+    parentCell && parentCell !== defaultParent && parentCell.getId()
+      ? parentCell.getId()!
+      : typeof styleRec.diagramGroupId === "string"
+        ? styleRec.diagramGroupId
+        : undefined;
+  const container =
+    kind === "container" || childIds.length
+      ? {
+          title: parsed.container?.title || parsed.label || "Group",
+          collapsed: parsed.container?.collapsed,
+          childIds: childIds.length ? childIds : parsed.container?.childIds,
+        }
+      : parsed.container;
+
+  return {
+    id: cell.getId() || crypto.randomUUID(),
+    label: parsed.label,
+    shape: cellShapeName(style),
+    x: geo?.x ?? 0,
+    y: geo?.y ?? 0,
+    w: clampSize(geo?.width, 120),
+    h: clampSize(geo?.height, 60),
+    kind,
+    locked,
+    groupId,
+    freehand: parsed.freehand,
+    table: parsed.table,
+    container,
+    style: {
+      fill: style.fillColor as string | undefined,
+      stroke: style.strokeColor as string | undefined,
+      strokeWidth: style.strokeWidth as number | undefined,
+      dashed: Boolean(style.dashed),
+      fontSize: style.fontSize as number | undefined,
+      fontColor: style.fontColor as string | undefined,
+      fontFamily: style.fontFamily as string | undefined,
+      fontStyle: style.fontStyle as number | undefined,
+      rounded: Boolean(style.rounded),
+      shadow: Boolean(style.shadow),
+      opacity: style.opacity as number | undefined,
+      rotation: typeof style.rotation === "number" ? style.rotation : undefined,
+      align: typeof style.align === "string" ? style.align : undefined,
+      verticalAlign: typeof style.verticalAlign === "string" ? style.verticalAlign : undefined,
+    },
+  };
+}
+
+function edgeToDiagramEdge(cell: Cell): DiagramEdge | null {
+  const source = cell.getTerminal(true);
+  const target = cell.getTerminal(false);
+  if (!source || !target) return null;
+  const style = cell.getStyle() ?? {};
+  let edgeStyle: EdgeStyle["edgeStyle"] = "orthogonal";
+  const es = String(style.edgeStyle ?? "");
+  if (es === "none" || !es) edgeStyle = "straight";
+  else if (es.includes("entityRelation")) edgeStyle = "entityRelation";
+  else if (es.includes("elbow")) edgeStyle = "elbow";
+  const geo = cell.getGeometry();
+  const points =
+    geo?.points?.map((p) => [p.x, p.y] as [number, number]).filter(Boolean) ?? undefined;
+  return {
+    id: cell.getId() || crypto.randomUUID(),
+    source: source.getId() || "",
+    target: target.getId() || "",
+    label: String(cell.getValue() ?? ""),
+    style: {
+      stroke: style.strokeColor as string | undefined,
+      strokeWidth: style.strokeWidth as number | undefined,
+      dashed: Boolean(style.dashed),
+      arrow: (style.endArrow as EdgeStyle["arrow"]) ?? "classic",
+      startArrow: (style.startArrow as EdgeStyle["startArrow"]) ?? "none",
+      edgeStyle,
+      curved: Boolean(style.curved),
+      fontSize: style.fontSize as number | undefined,
+      fontColor: style.fontColor as string | undefined,
+      exitX: typeof style.exitX === "number" ? style.exitX : undefined,
+      exitY: typeof style.exitY === "number" ? style.exitY : undefined,
+      entryX: typeof style.entryX === "number" ? style.entryX : undefined,
+      entryY: typeof style.entryY === "number" ? style.entryY : undefined,
+      points: points?.length ? points : undefined,
+    },
+  };
+}
+
 /** Serialize the current graph contents into a page JSON. */
 export function fromMaxGraph(graph: Graph, pageMeta: Pick<DiagramPage, "id" | "name">): DiagramPage {
   const parent = graph.getDefaultParent();
-  const vertices = graph.getChildVertices(parent);
-  const edges = graph.getChildEdges(parent);
+  const vertices: Cell[] = [];
+  collectChildVertices(graph, parent, vertices);
+  const edges: Cell[] = [];
+  collectChildEdges(graph, parent, edges);
 
-  const nodes: DiagramNode[] = vertices.map((cell) => {
-    const geo = cell.getGeometry();
-    const style = cell.getStyle() ?? {};
-    const styleRec = style as Record<string, unknown>;
-    const parsed = parseCellValue(cell.getValue());
-    const kindFromStyle = typeof styleRec.diagramKind === "string" ? styleRec.diagramKind : undefined;
-    const kind = (kindFromStyle as NodeKind | undefined) ?? parsed.kind;
-    const locked =
-      styleRec.diagramLocked === "1" || styleRec.diagramLocked === true
-        ? true
-        : styleRec.diagramLocked === "0" || styleRec.diagramLocked === false
-          ? false
-          : undefined;
-    const groupId = typeof styleRec.diagramGroupId === "string" ? styleRec.diagramGroupId : undefined;
-
-    return {
-      id: cell.getId() || crypto.randomUUID(),
-      label: parsed.label,
-      shape: cellShapeName(style),
-      x: geo?.x ?? 0,
-      y: geo?.y ?? 0,
-      w: geo?.width ?? 120,
-      h: geo?.height ?? 60,
-      kind,
-      locked,
-      groupId,
-      freehand: parsed.freehand,
-      table: parsed.table,
-      container: parsed.container,
-      style: {
-        fill: style.fillColor as string | undefined,
-        stroke: style.strokeColor as string | undefined,
-        strokeWidth: style.strokeWidth as number | undefined,
-        dashed: Boolean(style.dashed),
-        fontSize: style.fontSize as number | undefined,
-        fontColor: style.fontColor as string | undefined,
-        fontFamily: style.fontFamily as string | undefined,
-        fontStyle: style.fontStyle as number | undefined,
-        rounded: Boolean(style.rounded),
-        shadow: Boolean(style.shadow),
-        opacity: style.opacity as number | undefined,
-        rotation: typeof style.rotation === "number" ? style.rotation : undefined,
-      },
-    };
-  });
-
+  const nodes: DiagramNode[] = vertices.map((cell) => vertexToNode(graph, cell, parent));
   const pageEdges: DiagramEdge[] = edges
-    .map((cell) => {
-      const source = cell.getTerminal(true);
-      const target = cell.getTerminal(false);
-      if (!source || !target) return null;
-      const style = cell.getStyle() ?? {};
-      let edgeStyle: EdgeStyle["edgeStyle"] = "orthogonal";
-      const es = String(style.edgeStyle ?? "");
-      if (es === "none" || !es) edgeStyle = "straight";
-      else if (es.includes("entityRelation")) edgeStyle = "entityRelation";
-      else if (es.includes("elbow")) edgeStyle = "elbow";
-      const geo = cell.getGeometry();
-      const points =
-        geo?.points?.map((p) => [p.x, p.y] as [number, number]).filter(Boolean) ?? undefined;
-      return {
-        id: cell.getId() || crypto.randomUUID(),
-        source: source.getId() || "",
-        target: target.getId() || "",
-        label: String(cell.getValue() ?? ""),
-        style: {
-          stroke: style.strokeColor as string | undefined,
-          strokeWidth: style.strokeWidth as number | undefined,
-          dashed: Boolean(style.dashed),
-          arrow: (style.endArrow as EdgeStyle["arrow"]) ?? "classic",
-          startArrow: (style.startArrow as EdgeStyle["startArrow"]) ?? "none",
-          edgeStyle,
-          curved: Boolean(style.curved),
-          fontSize: style.fontSize as number | undefined,
-          fontColor: style.fontColor as string | undefined,
-          exitX: typeof style.exitX === "number" ? style.exitX : undefined,
-          exitY: typeof style.exitY === "number" ? style.exitY : undefined,
-          entryX: typeof style.entryX === "number" ? style.entryX : undefined,
-          entryY: typeof style.entryY === "number" ? style.entryY : undefined,
-          points: points?.length ? points : undefined,
-        },
-      } satisfies DiagramEdge;
-    })
+    .map((cell) => edgeToDiagramEdge(cell))
     .filter(Boolean) as DiagramEdge[];
 
   return {

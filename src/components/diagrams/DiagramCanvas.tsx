@@ -36,6 +36,8 @@ import {
   cellValueToDisplay,
   encodeEditedCellValue,
   parseCellValue,
+  patchTableCellText,
+  hitTestTableCell,
   type DiagramPage,
   type DiagramSettings,
   PAPER_SIZES,
@@ -371,6 +373,8 @@ export type DiagramCanvasHandle = {
   loadPage: (page: DiagramPage) => void;
   serializePage: (meta: Pick<DiagramPage, "id" | "name">) => DiagramPage | null;
   addShape: (def: ShapeDef, at?: { x: number; y: number }) => void;
+  /** Place shape at client (screen) coords — accounts for zoom/pan/scroll. */
+  addShapeAtClient: (def: ShapeDef, clientX: number, clientY: number) => void;
   addConnectedShape: (
     fromCellId: string,
     dir: Dir,
@@ -573,16 +577,19 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       setHoverUi(null);
       return;
     }
-    const rootRect = root.getBoundingClientRect();
-    // state.x/y are in graph view coords relative to container
+    // state.x/y are view coords relative to the graph container (host).
+    // Overlay is positioned inside rootRef which may scroll — offset by host position.
+    const host = hostRef.current;
+    const hostLeft = host ? host.offsetLeft : 0;
+    const hostTop = host ? host.offsetTop : 0;
     setHoverUi({
       cellId: cell.getId() || "",
-      left: state.x,
-      top: state.y,
+      left: hostLeft + state.x,
+      top: hostTop + state.y,
       width: state.width,
       height: state.height,
     });
-    void rootRect;
+    void root;
   }, []);
 
   useEffect(() => {
@@ -603,6 +610,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     graph.setGridEnabled(settings?.grid !== false);
     graph.setGridSize(settings?.gridSize ?? 10);
     graph.setTooltips(true);
+    graph.setHtmlLabels(true);
     graph.getView().setTranslate(40, 40);
     graph.getView().setAllowEval(false);
 
@@ -613,6 +621,15 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       const kind = parseCellValue(cell.getValue()).kind;
       if (kind === "table") return true;
       return baseIsHtmlLabel(cell);
+    };
+    const baseIsCellEditable = graph.isCellEditable.bind(graph);
+    graph.isCellEditable = (cell: Cell) => {
+      if (readOnlyRef.current) return false;
+      const kind = parseCellValue(cell.getValue()).kind;
+      if (kind === "freehand") return false;
+      // Tables use custom double-click cell editor (prompt), not in-place HTML edit
+      if (kind === "table") return false;
+      return baseIsCellEditable(cell);
     };
     const baseCellLabelChanged = graph.cellLabelChanged.bind(graph);
     graph.cellLabelChanged = (cell: Cell, value: unknown, autoSize?: boolean) => {
@@ -865,6 +882,44 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     };
     graph.addMouseListener(mouseListener as never);
 
+    const onDblClick = (_sender: unknown, evt: { getProperty: (k: string) => unknown }) => {
+      if (readOnlyRef.current) return;
+      const cell = evt.getProperty("cell") as Cell | null;
+      if (!cell?.isVertex()) return;
+      const parsed = parseCellValue(cell.getValue());
+      if (parsed.kind !== "table" || !parsed.table) return;
+      const me = evt.getProperty("event") as MouseEvent | undefined;
+      const geo = cell.getGeometry();
+      if (!geo || !me) return;
+      const pt = clientToGraph(graph, host, me.clientX, me.clientY);
+      const hit = hitTestTableCell(parsed.table, pt.x - geo.x, pt.y - geo.y, {
+        w: geo.width,
+        h: geo.height,
+        title: Boolean(parsed.label),
+      });
+      if (!hit) return;
+      const existing =
+        parsed.table.cells.find((c) => c.r === hit.r && c.c === hit.c)?.text ?? "";
+      const next = window.prompt(`Edit cell (${hit.r + 1}, ${hit.c + 1})`, existing);
+      if (next == null) return;
+      const table = patchTableCellText(parsed.table, hit.r, hit.c, next);
+      const payload = JSON.stringify({
+        kind: "table",
+        label: parsed.label,
+        table,
+        container: parsed.container,
+      });
+      graph.getDataModel().beginUpdate();
+      try {
+        graph.getDataModel().setValue(cell, payload);
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+      onDirtyRef.current?.();
+      InternalEvent.consume(me);
+    };
+    graph.addListener(InternalEvent.DOUBLE_CLICK, onDblClick as never);
+
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -880,6 +935,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     return () => {
       host.removeEventListener("wheel", onWheel);
       graph.removeMouseListener(mouseListener as never);
+      graph.removeListener(onDblClick as never);
       if (flowTimerRef.current) {
         clearInterval(flowTimerRef.current);
         flowTimerRef.current = null;
@@ -1011,7 +1067,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     addShape: (def, at) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const parent = graph.getDefaultParent();
       const w = def.w ?? 120;
       const h = def.h ?? 60;
@@ -1035,16 +1091,46 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         size: [w, h],
         style,
       });
-      onDirty?.();
+      onDirtyRef.current?.();
+    },
+    addShapeAtClient: (def, clientX, clientY) => {
+      const graph = graphRef.current;
+      const host = hostRef.current;
+      if (!graph || !host || readOnlyRef.current) return;
+      const w = def.w ?? 120;
+      const h = def.h ?? 60;
+      const pt = clientToGraph(graph, host, clientX, clientY);
+      const grid = graph.getGridSize();
+      const x = snapToGrid(pt.x - w / 2, grid);
+      const y = snapToGrid(pt.y - h / 2, grid);
+      const mapped = shapeToMaxStyle(def.shape);
+      const style: CellStyle = {
+        ...mapped,
+        fillColor: mapped.fillColor ?? "#dae8fc",
+        strokeColor: mapped.strokeColor ?? "#6c8ebf",
+        strokeWidth: 1.5,
+        fontSize: 12,
+        fontColor: "#333333",
+        whiteSpace: "wrap",
+      };
+      graph.insertVertex({
+        parent: graph.getDefaultParent(),
+        id: crypto.randomUUID(),
+        value: def.label === "Text" || def.shape === "text" ? "Text" : "",
+        position: [x, y],
+        size: [w, h],
+        style,
+      });
+      onDirtyRef.current?.();
     },
     addConnectedShape: (fromCellId, dir, shape) => {
       insertConnected(fromCellId, dir, shape);
     },
     deleteSelection: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       graph.removeCells(graph.getSelectionCells());
-      onDirty?.();
+      onDirtyRef.current?.();
     },
     undo: () => undoRef.current?.undo(),
     redo: () => undoRef.current?.redo(),
@@ -1083,7 +1169,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     clearSelection: () => graphRef.current?.clearSelection(),
     applyStyle: (patch) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const cells = graph.getSelectionCells();
       if (!cells.length) return;
       graph.getDataModel().beginUpdate();
@@ -1100,7 +1186,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     align: (dir) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const cells = graph.getSelectionCells().filter((c) => c.isVertex());
       if (cells.length < 2) return;
       const geos = cells.map((c) => c.getGeometry()!).filter(Boolean);
@@ -1158,7 +1244,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     distribute: (axis) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const cells = graph
         .getSelectionCells()
         .filter((c) => c.isVertex())
@@ -1198,7 +1284,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     autoLayout: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const layout = new HierarchicalLayout(graph);
       layout.orientation = "north";
       layout.intraCellSpacing = 40;
@@ -1218,19 +1304,19 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     cut: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       Clipboard.cut(graph, graph.getSelectionCells());
       onDirty?.();
     },
     paste: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       Clipboard.paste(graph);
       onDirty?.();
     },
     duplicate: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const cells = graph.getSelectionCells();
       if (!cells.length) return;
       Clipboard.copy(graph, cells);
@@ -1239,7 +1325,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     nudge: (dx, dy) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const cells = graph.getSelectionCells().filter((c) => c.isVertex());
       if (!cells.length) return;
       graph.getDataModel().beginUpdate();
@@ -1266,7 +1352,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     runLayout: (kind) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const parent = graph.getDefaultParent();
       graph.getDataModel().beginUpdate();
       try {
@@ -1308,7 +1394,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     magicCleanup: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const grid = graph.getGridSize() || 10;
       const parent = graph.getDefaultParent();
       const vertices = graph.getChildVertices(parent);
@@ -1365,7 +1451,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     insertTable: (rows, cols, opts) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const r = Math.max(1, Math.min(20, rows));
       const c = Math.max(1, Math.min(20, cols));
       const cellW = 80;
@@ -1411,7 +1497,6 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
             whiteSpace: "wrap",
             overflow: "fill",
             spacing: 4,
-            editable: false,
             startSize: opts?.title || opts?.container ? 28 : undefined,
             diagramKind: "table",
           } as CellStyle,
@@ -1424,7 +1509,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     insertContainer: (title = "Container") => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const payload = JSON.stringify({
         kind: "container",
         label: title,
@@ -1804,7 +1889,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     lockSelection: (locked) => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const cells = graph.getSelectionCells();
       graph.getDataModel().beginUpdate();
       try {
@@ -1827,24 +1912,41 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     },
     groupSelection: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       const cells = graph.getSelectionCells().filter((c) => c.isVertex());
       if (cells.length < 2) return;
       try {
         const group = graph.groupCells(null as unknown as Cell, 8, cells);
-        graph.setSelectionCell(group);
-        onDirty?.();
+        if (group) {
+          const style = {
+            ...(group.getStyle() ?? {}),
+            diagramKind: "container",
+            fillColor: (group.getStyle()?.fillColor as string | undefined) ?? "#f8fafc",
+            strokeColor: (group.getStyle()?.strokeColor as string | undefined) ?? "#94a3b8",
+          } as CellStyle;
+          graph.getDataModel().setStyle(group, style);
+          const childIds = cells.map((c) => c.getId()).filter(Boolean) as string[];
+          group.setValue(
+            JSON.stringify({
+              kind: "container",
+              label: "Group",
+              container: { title: "Group", collapsed: false, childIds },
+            })
+          );
+          graph.setSelectionCell(group);
+        }
+        onDirtyRef.current?.();
       } catch {
         /* grouping may fail without group cell */
       }
     },
     ungroupSelection: () => {
       const graph = graphRef.current;
-      if (!graph || readOnly) return;
+      if (!graph || readOnlyRef.current) return;
       try {
         const cells = graph.ungroupCells(graph.getSelectionCells());
         if (cells?.length) graph.setSelectionCells(cells);
-        onDirty?.();
+        onDirtyRef.current?.();
       } catch {
         /* ignore */
       }

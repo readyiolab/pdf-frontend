@@ -22,32 +22,80 @@ function getSvgElement(graph: Graph): SVGSVGElement | null {
   return container?.querySelector("svg") as SVGSVGElement | null;
 }
 
-export function exportSvg(graph: Graph): string {
+/** Flatten foreignObject HTML tables into SVG text so rasterize is not blank. */
+function flattenForeignObjects(clone: SVGSVGElement): void {
+  const fos = Array.from(clone.querySelectorAll("foreignObject"));
+  for (const fo of fos) {
+    const textContent = (fo.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!textContent) {
+      fo.remove();
+      continue;
+    }
+    const x = Number(fo.getAttribute("x") ?? 0);
+    const y = Number(fo.getAttribute("y") ?? 0);
+    const w = Number(fo.getAttribute("width") ?? 100);
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", String(x + 4));
+    text.setAttribute("y", String(y + 14));
+    text.setAttribute("font-size", "11");
+    text.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+    text.setAttribute("fill", "#334155");
+    // Wrap roughly by width
+    const maxChars = Math.max(8, Math.floor(w / 7));
+    const words = textContent.split(" ");
+    let line = "";
+    let lineY = y + 14;
+    const lines: string[] = [];
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (next.length > maxChars && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
+    }
+    if (line) lines.push(line);
+    if (lines.length <= 1) {
+      text.textContent = lines[0] ?? textContent;
+      fo.replaceWith(text);
+    } else {
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      lines.slice(0, 12).forEach((ln, i) => {
+        const tspan = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        tspan.setAttribute("x", String(x + 4));
+        tspan.setAttribute("y", String(lineY + i * 13));
+        tspan.setAttribute("font-size", "11");
+        tspan.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+        tspan.setAttribute("fill", "#334155");
+        tspan.textContent = ln;
+        g.appendChild(tspan);
+      });
+      fo.replaceWith(g);
+    }
+  }
+}
+
+export function exportSvg(graph: Graph, opts?: { flattenHtml?: boolean }): string {
   const svg = getSvgElement(graph);
   if (!svg) return "";
   const clone = svg.cloneNode(true) as SVGSVGElement;
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
   const bounds = graph.getGraphBounds();
   const pad = 20;
   const w = Math.max(1, Math.ceil(bounds.width + pad * 2));
   const h = Math.max(1, Math.ceil(bounds.height + pad * 2));
   clone.setAttribute("width", String(w));
   clone.setAttribute("height", String(h));
-  clone.setAttribute(
-    "viewBox",
-    `${bounds.x - pad} ${bounds.y - pad} ${w} ${h}`
-  );
+  clone.setAttribute("viewBox", `${bounds.x - pad} ${bounds.y - pad} ${w} ${h}`);
+  if (opts?.flattenHtml !== false) {
+    flattenForeignObjects(clone);
+  }
   return new XMLSerializer().serializeToString(clone);
 }
 
-export async function exportPng(graph: Graph, scale = 2): Promise<Blob> {
-  const svg = exportSvg(graph);
-  if (!svg) throw new Error("Nothing to export");
-  const bounds = graph.getGraphBounds();
-  const pad = 20;
-  const w = Math.max(1, Math.ceil((bounds.width + pad * 2) * scale));
-  const h = Math.max(1, Math.ceil((bounds.height + pad * 2) * scale));
-
+async function rasterizeSvgString(svg: string, w: number, h: number): Promise<Blob> {
   const img = new Image();
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
   try {
@@ -68,6 +116,55 @@ export async function exportPng(graph: Graph, scale = 2): Promise<Blob> {
     });
   } finally {
     URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Rasterize via an HTML wrapper when foreignObject is present — browsers often
+ * refuse to draw foreignObject from blob: SVG into canvas.
+ */
+async function rasterizeViaHtmlWrapper(svg: string, w: number, h: number): Promise<Blob> {
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;left:-99999px;top:0;width:1px;height:1px;border:0;opacity:0";
+  document.body.appendChild(iframe);
+  try {
+    const doc = iframe.contentDocument!;
+    doc.open();
+    doc.write(
+      `<!doctype html><html><head><style>html,body{margin:0;padding:0;background:#fff}</style></head><body>${svg}</body></html>`
+    );
+    doc.close();
+    await new Promise((r) => setTimeout(r, 50));
+    const svgEl = doc.querySelector("svg");
+    if (!svgEl) throw new Error("No SVG in wrapper");
+    // Prefer flattened path if html2canvas-like capture is unavailable — serialize again
+    const serialized = new XMLSerializer().serializeToString(svgEl);
+    return await rasterizeSvgString(serialized, w, h);
+  } finally {
+    iframe.remove();
+  }
+}
+
+export async function exportPng(graph: Graph, scale = 2): Promise<Blob> {
+  const bounds = graph.getGraphBounds();
+  const pad = 20;
+  const w = Math.max(1, Math.ceil((bounds.width + pad * 2) * scale));
+  const h = Math.max(1, Math.ceil((bounds.height + pad * 2) * scale));
+
+  // Always flatten foreignObject for reliable canvas drawImage
+  const svg = exportSvg(graph, { flattenHtml: true });
+  if (!svg) throw new Error("Nothing to export");
+
+  try {
+    return await rasterizeSvgString(svg, w, h);
+  } catch {
+    // Fallback: try HTML wrapper with unflattened SVG then flatten
+    const raw = exportSvg(graph, { flattenHtml: false });
+    try {
+      return await rasterizeViaHtmlWrapper(raw, w, h);
+    } catch {
+      return await rasterizeSvgString(exportSvg(graph, { flattenHtml: true }), w, h);
+    }
   }
 }
 
@@ -94,7 +191,7 @@ export function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function printSvg(graph: Graph) {
-  const svg = exportSvg(graph);
+  const svg = exportSvg(graph, { flattenHtml: true });
   if (!svg) return;
   const w = window.open("", "_blank", "noopener,noreferrer");
   if (!w) return;
