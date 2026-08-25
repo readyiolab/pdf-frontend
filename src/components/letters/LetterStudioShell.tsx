@@ -23,9 +23,9 @@ const STUDIO_THEME = {
 
 const NAV = [
   { to: "/letters/studio", label: "Home", icon: LayoutDashboard, end: true },
-  { to: "/letters/brands", label: "Brand", icon: Palette },
-  { to: "/letters/templates", label: "Templates", icon: PenLine },
-  { to: "/letters/batches/new", label: "New batch", icon: Upload },
+  { to: "/letters/brands", label: "Company look", icon: Palette },
+  { to: "/letters/templates", label: "Letter templates", icon: PenLine },
+  { to: "/letters/batches/new", label: "Send letters", icon: Upload },
   { to: "/letters/history", label: "History", icon: History },
   { to: "/letters/team", label: "Team", icon: Users },
 ] as const;
@@ -62,7 +62,7 @@ export function LetterStudioShell() {
               Letter Studio
             </p>
             <p className="truncate text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
-              Branded HR letters
+              Letters for many employees
             </p>
           </div>
         </div>
@@ -120,14 +120,14 @@ export function LetterStudioShell() {
             <div className="min-w-0">
               <p className="truncate font-heading text-sm font-bold">Letter Studio</p>
               <p className="truncate text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                Branded HR letters
+                Letters for many employees
               </p>
             </div>
           </div>
           <p className="hidden font-heading text-sm font-semibold tracking-tight text-slate-800 md:block">
             Letter Studio
             <span className="ml-2 font-sans text-xs font-normal text-slate-500">
-              Templates · brands · Excel → PDF
+              Write one letter · send many from Excel
             </span>
           </p>
           <div className="ml-auto">

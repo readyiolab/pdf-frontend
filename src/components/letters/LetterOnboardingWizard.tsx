@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import { ArrowRight, Check, FileSpreadsheet, Palette, PenLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  LETTER_HOW_IT_WORKS,
+  LETTER_STEP_META,
   markLetterOnboardingDone,
   shouldShowLetterOnboarding,
 } from "@/lib/letterOnboarding";
@@ -18,11 +20,11 @@ function orgId() {
   return readLetterOrgId();
 }
 
-const STEPS = [
-  { n: 1, title: "Your company look", icon: Palette },
-  { n: 2, title: "Your letter", icon: PenLine },
-  { n: 3, title: "Send many letters", icon: FileSpreadsheet },
-] as const;
+const STEPS = LETTER_STEP_META.map((s) => ({
+  n: s.n,
+  title: s.title,
+  icon: s.n === 1 ? Palette : s.n === 2 ? PenLine : FileSpreadsheet,
+}));
 
 /**
  * First-visit guided overlay. Shown until completed/skipped when brand/template
@@ -121,6 +123,9 @@ export function LetterOnboardingWizard() {
           <h2 className="font-heading mt-1 text-xl font-bold text-slate-900">
             Let’s set up Letter Studio
           </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            You write one letter, then fill it for many employees from Excel.
+          </p>
           <ol className="mt-4 flex gap-2">
             {STEPS.map((s) => {
               const Icon = s.icon;
@@ -153,11 +158,11 @@ export function LetterOnboardingWizard() {
           {step === 1 && (
             <div className="space-y-4">
               <p className="text-sm text-slate-600">
-                Tell us how letters should look. You can add a logo later — start with who signs.
+                Recommended: add your logo and who signs. You can skip and do this later.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <Label>Brand name</Label>
+                  <Label>Company / brand name</Label>
                   <Input
                     value={brandName}
                     onChange={(e) => setBrandName(e.target.value)}
@@ -181,13 +186,21 @@ export function LetterOnboardingWizard() {
                   />
                 </div>
               </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-auto px-0 text-sm text-slate-500"
+                onClick={() => setStep(2)}
+              >
+                Skip company look for now
+              </Button>
             </div>
           )}
 
           {step === 2 && (
             <div className="space-y-4">
               <p className="text-sm text-slate-600">
-                Pick a starter letter. You can edit the wording anytime in Templates.
+                Pick a starter letter. You can edit the wording anytime in Letter templates.
               </p>
               <div className="grid max-h-[40vh] gap-2 overflow-y-auto sm:grid-cols-2">
                 {templates.map((t) => (
@@ -218,16 +231,11 @@ export function LetterOnboardingWizard() {
           {step === 3 && (
             <div className="space-y-4">
               <p className="text-sm text-slate-600">
-                Upload an Excel file of employees. We map columns, check for mistakes, then create
-                one PDF per person.
+                Next you will upload a spreadsheet of employees, review the rows, then create
+                PDFs (or email them).
               </p>
               <ul className="space-y-2 text-sm text-slate-700">
-                {[
-                  "Choose your letter template",
-                  "Upload Excel or CSV",
-                  "Confirm the data looks right",
-                  "Generate PDFs (and optionally email drafts)",
-                ].map((line) => (
+                {LETTER_HOW_IT_WORKS.map((line) => (
                   <li key={line} className="flex items-start gap-2">
                     <Check className="mt-0.5 size-4 shrink-0 text-indigo-600" />
                     {line}
@@ -298,7 +306,7 @@ export function LetterOnboardingWizard() {
                   );
                 }}
               >
-                Start a batch
+                Start sending letters
                 <ArrowRight className="ml-1.5 size-4" />
               </Button>
             )}

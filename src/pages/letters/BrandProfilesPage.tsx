@@ -125,8 +125,8 @@ export default function BrandProfilesPage() {
   return (
     <div className="flex min-h-full flex-col">
       <StudioPageHeader
-        title="Brand"
-        description="Add your company logo and who signs the letter. Images only (PNG/JPG) — not PDF."
+        title="Company look"
+        description="Add logo and signatory so letters look official (you can skip and add later). Images only (PNG/JPG) — not PDF."
       />
       <div className="grid flex-1 gap-0 lg:grid-cols-[1fr_280px]">
         <div className="space-y-5 border-b border-slate-200 p-4 sm:p-5 lg:border-b-0 lg:border-r">
@@ -212,7 +212,7 @@ export default function BrandProfilesPage() {
 
         <div className="bg-[var(--studio-paper,#F4F6F8)]">
           <div className="border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Your brands
+            Your company looks
           </div>
           <div className="grid gap-2 p-3 sm:grid-cols-1">
             {brands.map((b) => (
@@ -257,7 +257,8 @@ export default function BrandProfilesPage() {
             ))}
             {brands.length === 0 && (
               <div className="px-2 py-8 text-center text-sm text-slate-500">
-                No brand profiles yet. Fill the form and click Save.
+                No company look yet. Add logo and signatory, then click Save — or skip and do this
+                later when you send letters.
               </div>
             )}
           </div>

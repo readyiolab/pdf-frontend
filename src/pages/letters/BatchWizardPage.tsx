@@ -31,6 +31,23 @@ function orgId() {
 
 type Step = "setup" | "map" | "validate" | "generate" | "send";
 
+/** Human labels for system letter fields shown in mapping UI. */
+function fieldLabel(field: string): string {
+  const map: Record<string, string> = {
+    Employee_ID: "Employee ID",
+    Employee_Name: "Employee name",
+    Employee_Email: "Employee email",
+    Designation: "Designation",
+    Department: "Department",
+    Effective_Date: "Effective date",
+    Current_Salary: "Current salary",
+    New_Salary: "New salary",
+    Increment_Amount: "Increment amount",
+    Increment_Percent: "Increment %",
+  };
+  return map[field] || field.replace(/_/g, " ");
+}
+
 const MappingRow = memo(function MappingRow({
   header,
   value,
@@ -68,7 +85,7 @@ const MappingRow = memo(function MappingRow({
           <option value="">— skip —</option>
           {systemFields.map((f) => (
             <option key={f} value={f}>
-              {f}
+              {fieldLabel(f)}
             </option>
           ))}
         </select>
@@ -206,7 +223,7 @@ export default function BatchWizardPage() {
       });
       setBatchId(batch.id);
       navigate(`/letters/batches/${batch.id}`, { replace: true });
-      toast.success("Batch created — upload Excel next");
+      toast.success("Ready — upload your spreadsheet next");
       setStep("map");
     } catch (e: any) {
       toast.error(e.message);
@@ -217,7 +234,7 @@ export default function BatchWizardPage() {
 
   const onFile = async (file: File) => {
     if (!batchId) {
-      toast.error("Create the batch first");
+      toast.error("Start send first — choose a template and continue");
       return;
     }
     setBusy(true);
@@ -316,7 +333,7 @@ export default function BatchWizardPage() {
         /* optional */
       }
       setStep("validate");
-      toast.success("Validated");
+      toast.success("Employee rows reviewed");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -531,14 +548,35 @@ export default function BatchWizardPage() {
     [headers, mapping]
   );
 
-  const STEP_META: { id: Step; label: string }[] = [
-    { id: "setup", label: "Choose template" },
-    { id: "map", label: "Upload Excel" },
-    { id: "validate", label: "Check data" },
-    { id: "generate", label: "Make PDFs" },
-    { id: "send", label: "Email" },
+  const STEP_META: { id: Step; label: string; nextHint: string }[] = [
+    {
+      id: "setup",
+      label: "Choose template",
+      nextHint: "Next: pick the letter employees will receive (company look is optional).",
+    },
+    {
+      id: "map",
+      label: "Upload spreadsheet",
+      nextHint: "Next: upload Excel/CSV and match each column to a letter field.",
+    },
+    {
+      id: "validate",
+      label: "Review employees",
+      nextHint: "Next: check Ready / Warning / Blocked rows, then continue.",
+    },
+    {
+      id: "generate",
+      label: "Create PDFs",
+      nextHint: "Next: create one PDF per employee.",
+    },
+    {
+      id: "send",
+      label: "Send or download",
+      nextHint: "Next: download the ZIP, or email via Outlook/Gmail if your plan allows.",
+    },
   ];
   const stepIndex = STEP_META.findIndex((s) => s.id === step);
+  const stepHint = STEP_META[stepIndex]?.nextHint ?? "";
 
   const onFileInput = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -549,11 +587,10 @@ export default function BatchWizardPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 border-b border-slate-200 px-4 py-4 sm:px-5">
         <h1 className="font-heading text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
-          New batch
+          Send letters
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Upload employee data, check it, then create PDFs.
-          {batchId ? ` · ${batchId.slice(0, 8)}…` : ""}
+          Upload employee data, review it, then create PDFs — or email them.
         </p>
         <ol className="mt-4 flex flex-wrap gap-1.5">
           {STEP_META.map((s, i) => {
@@ -584,6 +621,11 @@ export default function BatchWizardPage() {
             );
           })}
         </ol>
+        {stepHint && (
+          <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            {stepHint}
+          </p>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
@@ -616,7 +658,7 @@ export default function BatchWizardPage() {
                   ))}
                   {templates.length === 0 && (
                     <p className="text-sm text-slate-500 sm:col-span-2">
-                      No templates yet — create one in Templates first.
+                      No letter templates yet — create one under Letter templates first.
                     </p>
                   )}
                 </div>
@@ -639,8 +681,8 @@ export default function BatchWizardPage() {
                         : "border-slate-200 hover:border-slate-300"
                     )}
                   >
-                    <p className="text-sm font-semibold text-slate-900">No brand</p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">Plain letter only</p>
+                    <p className="text-sm font-semibold text-slate-900">No company look</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Plain letter only — add later</p>
                   </button>
                   {brands.map((b) => (
                     <button
@@ -704,7 +746,7 @@ export default function BatchWizardPage() {
                     onClick={applyMap}
                   >
                     {busy ? <Spinner className="mr-2 size-4" /> : null}
-                    {busy ? "Checking…" : "Save mapping and validate"}
+                    {busy ? "Checking…" : "Save matches and review rows"}
                   </Button>
                 </div>
               )}
@@ -760,7 +802,7 @@ export default function BatchWizardPage() {
                                     <span className="block text-[10px] font-normal text-slate-400">
                                       {m.excel}
                                     </span>
-                                    {m.field}
+                                    {fieldLabel(m.field)}
                                   </th>
                                 ))}
                               </tr>
@@ -786,8 +828,12 @@ export default function BatchWizardPage() {
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th className="px-3 py-2.5 font-semibold text-slate-600">Excel column</th>
-                            <th className="px-3 py-2.5 font-semibold text-slate-600">Maps to</th>
+                            <th className="px-3 py-2.5 font-semibold text-slate-600">
+                              Spreadsheet column
+                            </th>
+                            <th className="px-3 py-2.5 font-semibold text-slate-600">
+                              Goes into letter field
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -898,7 +944,7 @@ export default function BatchWizardPage() {
                   }}
                 >
                   {busy ? <Spinner className="mr-2 size-4" /> : null}
-                  {busy ? "Loading…" : "Continue to generate"}
+                  {busy ? "Loading…" : "Continue to create PDFs"}
                 </Button>
               </div>
             </div>
@@ -1092,17 +1138,16 @@ export default function BatchWizardPage() {
               {(progress?.generated > 0 || !(progress?.failed > 0)) && (
                 <>
                   {progress?.generated > 0 && (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
-                      <p className="text-sm font-medium text-slate-900">
+                    <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-4">
+                      <p className="text-sm font-semibold text-slate-900">
                         {progress.generated} letter PDF{progress.generated === 1 ? "" : "s"} ready
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Letters are stored in your cloud storage. Download anytime from History.
+                      <p className="mt-1 text-xs text-slate-600">
+                        Download a ZIP now, or email from Outlook/Gmail below (PRO).
                       </p>
                       <Button
                         type="button"
-                        variant="outline"
-                        className="mt-3 rounded-xl border-slate-200"
+                        className="mt-3 rounded-xl bg-indigo-600 hover:bg-indigo-700"
                         disabled={downloadingZip}
                         onClick={async () => {
                           setDownloadingZip(true);
@@ -1117,11 +1162,18 @@ export default function BatchWizardPage() {
                         }}
                       >
                         {downloadingZip ? <Spinner className="mr-2 size-4" /> : null}
-                        Download all PDFs
+                        Download ZIP
                       </Button>
                     </div>
                   )}
-                  <div>
+                  <div className="rounded-xl border border-slate-200 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Email with Outlook / Gmail
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Optional — only if you want to send or draft emails from your mailbox.
+                    </p>
+                  <div className="mt-3">
                     <Label>Mode</Label>
                     <select
                       className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
@@ -1129,7 +1181,7 @@ export default function BatchWizardPage() {
                       onChange={(e) => setSendMode(e.target.value as any)}
                       disabled={!canSend}
                     >
-                      <option value="GENERATE_ONLY">Generate only (no email)</option>
+                      <option value="GENERATE_ONLY">Download only (no email)</option>
                       {canSend && <option value="CREATE_DRAFTS">Create drafts (default)</option>}
                       {canSend && <option value="SEND_NOW">Send now</option>}
                     </select>
@@ -1260,8 +1312,11 @@ export default function BatchWizardPage() {
                       ? "Working…"
                       : sendMode === "SEND_NOW" && canSend
                         ? "Confirm & send now"
-                        : "Continue"}
+                        : sendMode === "GENERATE_ONLY"
+                          ? "Finish"
+                          : "Continue with email"}
                   </Button>
+                  </div>
                 </>
               )}
             </div>

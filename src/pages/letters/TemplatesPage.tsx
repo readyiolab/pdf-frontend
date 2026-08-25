@@ -268,7 +268,7 @@ export default function TemplatesPage() {
             <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-700">
               Library
             </p>
-            <h1 className="font-heading text-sm font-bold text-slate-900">Templates</h1>
+            <h1 className="font-heading text-sm font-bold text-slate-900">Letter templates</h1>
           </div>
           <Button
             variant="outline"
@@ -377,7 +377,7 @@ export default function TemplatesPage() {
               onClick={() => setShowSampleFill((v) => !v)}
             >
               <Eye className="mr-1.5 size-3.5" />
-              {showSampleFill ? "Edit tokens" : "Sample fill"}
+              {showSampleFill ? "Edit fields" : "Sample fill"}
             </Button>
             <div className="relative">
               <Button
@@ -563,8 +563,9 @@ export default function TemplatesPage() {
             </div>
           </div>
           <p className="mx-auto mt-4 max-w-[720px] text-center text-[11px] text-slate-500">
-            Letters are stored in cloud storage when you generate a batch. Preview brand is visual
-            only — you still pick a brand when creating a batch.
+            Insert fields that change per employee (name, salary, date…). Letters are stored in cloud
+            storage when you send. Preview brand is visual only — you still pick a company look when
+            sending.
           </p>
         </div>
 
@@ -583,7 +584,7 @@ export default function TemplatesPage() {
               disabled={generating || polishing}
               onClick={() => navigate(`/letters/batches/new?templateId=${selectedId}`)}
             >
-              Use in batch
+              Use in send
             </Button>
           )}
         </div>
