@@ -24,12 +24,19 @@ import {
 } from "@/lib/letterMapping";
 import { cn } from "@/lib/utils";
 import { ensureLetterOrgId, readLetterOrgId, writeLetterOrgId } from "@/features/letters/orgHelpers";
+import { ChevronDown } from "lucide-react";
 
 function orgId() {
   return readLetterOrgId();
 }
 
 type Step = "setup" | "map" | "validate" | "generate" | "send";
+
+function severityPlain(severity: string): string {
+  if (severity === "BLOCKED") return "Can't send";
+  if (severity === "REVIEW") return "Needs a look";
+  return "Needs a look";
+}
 
 /** Human labels for system letter fields shown in mapping UI. */
 function fieldLabel(field: string): string {
@@ -133,6 +140,8 @@ export default function BatchWizardPage() {
   /** True only after Generate PDFs is queued — drives progress polling. */
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [showFixMatches, setShowFixMatches] = useState(false);
+  const [showCompanyLook, setShowCompanyLook] = useState(false);
 
   useEffect(() => {
     setSendMode(canSend ? "CREATE_DRAFTS" : "GENERATE_ONLY");
@@ -290,8 +299,14 @@ export default function BatchWizardPage() {
 
       setMapping(next);
       setMapSources(sources);
+      setShowFixMatches(unmappedRequired(next).length > 0);
       setStep("map");
-      toast.success(`Detected ${parsed.totalRows} rows · ${Object.values(next).filter(Boolean).length} columns mapped`);
+      const n = parsed.totalRows || parsed.rows?.length || 0;
+      toast.success(
+        unmappedRequired(next).length
+          ? `Found ${n} employees — please match a few columns`
+          : `Found ${n} employees`
+      );
     } catch (e: any) {
       toast.error(e.message || "Failed to parse file");
     } finally {
@@ -304,15 +319,13 @@ export default function BatchWizardPage() {
     setMapSources((s) => ({ ...s, [header]: field ? "auto" : "" }));
   }, []);
 
-  const mappedCount = useMemo(
-    () => Object.values(mapping).filter(Boolean).length,
-    [mapping]
-  );
   const missingRequired = useMemo(() => unmappedRequired(mapping), [mapping]);
 
   const applyMap = async () => {
     if (missingRequired.length) {
-      toast.error(`Map required fields: ${missingRequired.join(", ")}`);
+      toast.error(
+        `Still need: ${missingRequired.map((f) => fieldLabel(f)).join(", ")}`
+      );
       return;
     }
     setBusy(true);
@@ -333,7 +346,7 @@ export default function BatchWizardPage() {
         /* optional */
       }
       setStep("validate");
-      toast.success("Employee rows reviewed");
+      toast.success("Employee list ready to review");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -532,37 +545,60 @@ export default function BatchWizardPage() {
   const causeLine = useMemo(() => {
     if (!summary) return null;
     if (summary.blocked === 0 && summary.warning === 0) {
-      return "All rows look good — you can generate PDFs.";
+      return null;
     }
     const top = issueGroups[0];
     if (!top) return null;
     const n = summary.blocked || top.rows.length;
-    return `${n} row${n === 1 ? "" : "s"}: ${top.label}${
-      missingRequired.length ? ` (map ${missingRequired.join(", ")} first)` : ""
-    }.`;
-  }, [summary, issueGroups, missingRequired]);
+    return `${n} employee${n === 1 ? "" : "s"} need attention: ${top.label}.`;
+  }, [summary, issueGroups]);
 
   const visibleGroups = showAllIssues ? issueGroups : issueGroups.slice(0, 50);
-  const mappedFields = useMemo(
-    () => headers.filter((h) => mapping[h]).map((h) => ({ excel: h, field: mapping[h] })),
-    [headers, mapping]
+
+  const nameCol = useMemo(
+    () => Object.entries(mapping).find(([, f]) => f === "Employee_Name")?.[0] || null,
+    [mapping]
   );
+  const emailCol = useMemo(
+    () => Object.entries(mapping).find(([, f]) => f === "Employee_Email")?.[0] || null,
+    [mapping]
+  );
+
+  const employeePreview = useMemo(() => {
+    const rows =
+      allRowsRef.current.length > 0 ? allRowsRef.current.slice(0, 12) : previewRows;
+    return rows.map((row, i) => ({
+      name: (nameCol && row[nameCol]) || `Employee ${i + 1}`,
+      email: (emailCol && row[emailCol]) || "",
+    }));
+  }, [previewRows, nameCol, emailCol, mapping, headers]);
+
+  const rowName = useCallback(
+    (rowNum1Based: number) => {
+      const row = allRowsRef.current[rowNum1Based - 1];
+      if (!row) return `Row ${rowNum1Based}`;
+      return (nameCol && row[nameCol]) || `Row ${rowNum1Based}`;
+    },
+    [nameCol, mapping]
+  );
+
+  const columnsReady = headers.length > 0 && missingRequired.length === 0;
 
   const STEP_META: { id: Step; label: string; nextHint: string }[] = [
     {
       id: "setup",
       label: "Choose template",
-      nextHint: "Next: pick the letter employees will receive (company look is optional).",
+      nextHint: "Next: pick which letter to send. Company logo is optional.",
     },
     {
       id: "map",
       label: "Upload spreadsheet",
-      nextHint: "Next: upload Excel/CSV and match each column to a letter field.",
+      nextHint: "Next: upload your Excel/CSV. We match columns for you.",
     },
     {
       id: "validate",
       label: "Review employees",
-      nextHint: "Next: check Ready / Warning / Blocked rows, then continue.",
+      nextHint: "Next: make sure the employee list looks right, then create PDFs.",
     },
     {
       id: "generate",
@@ -572,7 +608,7 @@ export default function BatchWizardPage() {
     {
       id: "send",
       label: "Send or download",
-      nextHint: "Next: download the ZIP, or email via Outlook/Gmail if your plan allows.",
+      nextHint: "Next: download a ZIP, or email from your Outlook/Gmail.",
     },
   ];
   const stepIndex = STEP_META.findIndex((s) => s.id === step);
@@ -633,9 +669,11 @@ export default function BatchWizardPage() {
           {step === "setup" && (
             <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
               <div>
-                <Label className="text-sm font-semibold text-slate-900">Template</Label>
+                <Label className="text-sm font-semibold text-slate-900">
+                  Pick which letter to send
+                </Label>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  The letter body employees will receive — this is the main choice.
+                  Choose one letter type. You can edit the wording later under Letter templates.
                 </p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {templates.map((t) => (
@@ -651,73 +689,85 @@ export default function BatchWizardPage() {
                       )}
                     >
                       <p className="text-sm font-semibold text-slate-900">{t.name}</p>
-                      <p className="mt-0.5 text-[11px] text-slate-500">
-                        {String(t.type || "").replace(/_/g, " ")} · v{t.version}
-                      </p>
                     </button>
                   ))}
                   {templates.length === 0 && (
                     <p className="text-sm text-slate-500 sm:col-span-2">
-                      No letter templates yet — create one under Letter templates first.
+                      No letters yet — open Letter templates first, then come back.
                     </p>
                   )}
                 </div>
               </div>
-              <div>
-                <Label className="text-sm font-semibold text-slate-900">
-                  Brand profile (optional)
-                </Label>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Logo, letterhead, and signatory overlay. You can keep several brands and pick one.
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setBrandProfileId("")}
+
+              <div className="rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+                  onClick={() => setShowCompanyLook((v) => !v)}
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Add company logo &amp; signatory (optional)
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {brandProfileId
+                        ? brands.find((b) => b.id === brandProfileId)?.name || "Selected"
+                        : "Skipped — plain letter"}
+                    </p>
+                  </div>
+                  <ChevronDown
                     className={cn(
-                      "rounded-xl border px-3 py-3 text-left transition",
-                      !brandProfileId
-                        ? "border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200"
-                        : "border-slate-200 hover:border-slate-300"
+                      "size-4 shrink-0 text-slate-400 transition",
+                      showCompanyLook && "rotate-180"
                     )}
-                  >
-                    <p className="text-sm font-semibold text-slate-900">No company look</p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">Plain letter only — add later</p>
-                  </button>
-                  {brands.map((b) => (
+                  />
+                </button>
+                {showCompanyLook && (
+                  <div className="grid gap-2 border-t border-slate-100 p-3 sm:grid-cols-2">
                     <button
-                      key={b.id}
                       type="button"
-                      onClick={() => setBrandProfileId(b.id)}
+                      onClick={() => setBrandProfileId("")}
                       className={cn(
                         "rounded-xl border px-3 py-3 text-left transition",
-                        brandProfileId === b.id
+                        !brandProfileId
                           ? "border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200"
                           : "border-slate-200 hover:border-slate-300"
                       )}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold uppercase text-slate-500">
-                          {String(b.name || "BR").slice(0, 2)}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">{b.name}</p>
-                          <p className="truncate text-[11px] text-slate-500">
-                            {b.signatoryName || "No signatory"}
-                          </p>
-                        </div>
-                      </div>
+                      <p className="text-sm font-semibold text-slate-900">No company look</p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        Plain letter — add later
+                      </p>
                     </button>
-                  ))}
-                </div>
+                    {brands.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => setBrandProfileId(b.id)}
+                        className={cn(
+                          "rounded-xl border px-3 py-3 text-left transition",
+                          brandProfileId === b.id
+                            ? "border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200"
+                            : "border-slate-200 hover:border-slate-300"
+                        )}
+                      >
+                        <p className="truncate text-sm font-semibold text-slate-900">{b.name}</p>
+                        <p className="truncate text-[11px] text-slate-500">
+                          {b.signatoryName || "No signatory yet"}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
               <Button
                 className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
                 disabled={busy || !templateId}
                 onClick={createBatch}
               >
                 {busy ? <Spinner className="mr-2 size-4" /> : null}
-                {busy ? "Creating…" : "Continue"}
+                {busy ? "Creating…" : "Next: upload employees"}
               </Button>
             </div>
           )}
@@ -731,11 +781,11 @@ export default function BatchWizardPage() {
                       {sourceFileName || "Uploaded file"}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {rowCount} rows · {mappedCount} of {headers.length} columns mapped
-                      {missingRequired.length > 0 && (
+                      {columnsReady ? (
+                        <>{rowCount} employees ready</>
+                      ) : (
                         <span className="text-rose-600">
-                          {" "}
-                          · still need {missingRequired.join(", ")}
+                          Need: {missingRequired.map((f) => fieldLabel(f)).join(", ")}
                         </span>
                       )}
                     </p>
@@ -746,14 +796,14 @@ export default function BatchWizardPage() {
                     onClick={applyMap}
                   >
                     {busy ? <Spinner className="mr-2 size-4" /> : null}
-                    {busy ? "Checking…" : "Save matches and review rows"}
+                    {busy ? "Checking…" : "Looks good — continue"}
                   </Button>
                 </div>
               )}
 
               <div className="space-y-4 rounded-xl border border-slate-200 p-4">
                 <div>
-                  <Label>Upload Excel or CSV</Label>
+                  <Label>Upload your employee Excel or CSV</Label>
                   <p className="mt-1 text-xs text-slate-500">
                     Need a test file?{" "}
                     <a
@@ -761,9 +811,9 @@ export default function BatchWizardPage() {
                       download="letter-batch-sample.csv"
                       className="font-semibold text-indigo-700 underline underline-offset-2"
                     >
-                      Download sample Excel (CSV)
-                    </a>{" "}
-                    with 5 employees — then upload it here.
+                      Download a sample with 5 employees
+                    </a>
+                    , then upload it here.
                   </p>
                   <input
                     type="file"
@@ -781,49 +831,63 @@ export default function BatchWizardPage() {
                   </div>
                 )}
 
-                {aiNote && (
+                {aiNote && showFixMatches && (
                   <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{aiNote}</p>
                 )}
 
-                {headers.length > 0 && (
-                  <>
-                    {previewRows.length > 0 && mappedFields.length > 0 && (
-                      <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Live preview (first {previewRows.length} rows)
-                        </p>
-                        <div className="overflow-auto rounded-xl border border-slate-200">
-                          <table className="w-full min-w-[640px] text-left text-xs">
-                            <thead className="bg-slate-50">
-                              <tr>
-                                <th className="px-3 py-2.5 font-semibold text-slate-500">#</th>
-                                {mappedFields.map((m) => (
-                                  <th key={m.excel} className="px-3 py-2.5 font-semibold text-slate-600">
-                                    <span className="block text-[10px] font-normal text-slate-400">
-                                      {m.excel}
-                                    </span>
-                                    {fieldLabel(m.field)}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {previewRows.map((row, i) => (
-                                <tr key={i} className="border-t border-slate-100 [content-visibility:auto]">
-                                  <td className="px-3 py-2 text-slate-400">{i + 1}</td>
-                                  {mappedFields.map((m) => (
-                                    <td key={m.excel} className="max-w-[140px] truncate px-3 py-2 text-slate-700">
-                                      {row[m.excel] ?? ""}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
+                {headers.length > 0 && columnsReady && !showFixMatches && (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3">
+                      <p className="text-sm font-semibold text-emerald-900">
+                        We found {rowCount} employees and matched your columns.
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        Check the names below. If something looks wrong, fix the column matches.
+                      </p>
+                    </div>
+                    <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      {employeePreview.map((emp, i) => (
+                        <li
+                          key={`${emp.name}-${i}`}
+                          className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                        >
+                          <span className="font-medium text-slate-900">{emp.name}</span>
+                          <span className="truncate text-xs text-slate-500">{emp.email || "—"}</span>
+                        </li>
+                      ))}
+                      {rowCount > employeePreview.length && (
+                        <li className="px-4 py-2 text-xs text-slate-500">
+                          +{rowCount - employeePreview.length} more employees
+                        </li>
+                      )}
+                    </ul>
+                    <button
+                      type="button"
+                      className="text-sm font-semibold text-indigo-700 underline-offset-2 hover:underline"
+                      onClick={() => setShowFixMatches(true)}
+                    >
+                      Columns look wrong? Fix matches
+                    </button>
+                  </div>
+                )}
 
+                {headers.length > 0 && (showFixMatches || !columnsReady) && (
+                  <div className="space-y-3">
+                    {!columnsReady && (
+                      <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+                        Need: {missingRequired.map((f) => fieldLabel(f)).join(", ")}. Match them
+                        below, then continue.
+                      </p>
+                    )}
+                    {columnsReady && (
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-slate-600 underline-offset-2 hover:underline"
+                        onClick={() => setShowFixMatches(false)}
+                      >
+                        Hide column matching
+                      </button>
+                    )}
                     <div className="overflow-auto rounded-xl border border-slate-200">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50">
@@ -850,12 +914,12 @@ export default function BatchWizardPage() {
                         </tbody>
                       </table>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {headers.length === 0 && !busy && (
                   <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    Upload an .xlsx or .csv file to detect columns.
+                    Upload an Excel or CSV file with your employee list.
                   </p>
                 )}
               </div>
@@ -864,11 +928,21 @@ export default function BatchWizardPage() {
 
           {step === "validate" && (
             <div className="space-y-4">
+              {summary && summary.blocked === 0 && summary.warning === 0 && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-4">
+                  <p className="text-sm font-semibold text-emerald-900">
+                    All {summary.ready} employees look good
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-800">
+                    You can create the letter PDFs now.
+                  </p>
+                </div>
+              )}
               {summary && (
                 <div className="grid grid-cols-3 gap-3">
-                  <Stat label="Ready" value={summary.ready} tone="emerald" />
-                  <Stat label="Warning" value={summary.warning} tone="amber" />
-                  <Stat label="Blocked" value={summary.blocked} tone="rose" />
+                  <Stat label="Ready to send" value={summary.ready} tone="emerald" />
+                  <Stat label="Needs a look" value={summary.warning} tone="amber" />
+                  <Stat label="Can't send" value={summary.blocked} tone="rose" />
                 </div>
               )}
               {causeLine && (
@@ -876,53 +950,60 @@ export default function BatchWizardPage() {
                   {causeLine}
                 </p>
               )}
-              <div className="max-h-80 overflow-auto rounded-xl border border-slate-200 bg-white text-xs">
-                {visibleGroups.map((g) => (
-                  <div
-                    key={`${g.code}-${g.severity}`}
-                    className="border-b border-slate-100 px-3 py-2.5 [content-visibility:auto]"
-                  >
-                    <div className="font-semibold text-slate-800">
-                      {g.label}
-                      <span
-                        className={cn(
-                          "ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                          g.severity === "BLOCKED"
-                            ? "bg-rose-500/15 text-rose-700"
-                            : g.severity === "REVIEW"
-                              ? "bg-violet-500/15 text-violet-700"
+              {(issueGroups.length > 0 || (summary && (summary.warning > 0 || summary.blocked > 0))) && (
+                <div className="max-h-80 overflow-auto rounded-xl border border-slate-200 bg-white text-xs">
+                  {visibleGroups.map((g) => (
+                    <div
+                      key={`${g.code}-${g.severity}`}
+                      className="border-b border-slate-100 px-3 py-2.5 [content-visibility:auto]"
+                    >
+                      <div className="font-semibold text-slate-800">
+                        {g.label}
+                        <span
+                          className={cn(
+                            "ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                            g.severity === "BLOCKED"
+                              ? "bg-rose-500/15 text-rose-700"
                               : "bg-amber-500/15 text-amber-700"
-                        )}
-                      >
-                        {g.severity} · {g.rows.length} row{g.rows.length === 1 ? "" : "s"}
-                      </span>
+                          )}
+                        >
+                          {severityPlain(g.severity)} · {g.rows.length} employee
+                          {g.rows.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-slate-500">
+                        {g.rows
+                          .slice(0, 8)
+                          .map((r) => rowName(r))
+                          .join(", ")}
+                        {g.rows.length > 8 ? ` +${g.rows.length - 8} more` : ""}
+                      </p>
                     </div>
-                    <p className="mt-1 text-slate-500">
-                      Rows {g.rows.slice(0, 12).join(", ")}
-                      {g.rows.length > 12 ? ` +${g.rows.length - 12} more` : ""}
-                    </p>
-                  </div>
-                ))}
-                {issueGroups.length > 50 && !showAllIssues && (
-                  <button
-                    type="button"
-                    className="w-full px-3 py-2.5 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
-                    onClick={() => setShowAllIssues(true)}
-                  >
-                    Show more ({issueGroups.length - 50} more groups)
-                  </button>
-                )}
-                {issues.length === 0 && (
-                  <div className="p-4 text-slate-500">No issues — all rows ready.</div>
-                )}
-              </div>
+                  ))}
+                  {issueGroups.length > 50 && !showAllIssues && (
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2.5 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                      onClick={() => setShowAllIssues(true)}
+                    >
+                      Show more
+                    </button>
+                  )}
+                  {issues.length === 0 && (
+                    <div className="p-4 text-slate-500">No problems found.</div>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
                   className="rounded-xl border-slate-200 transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
-                  onClick={() => setStep("map")}
+                  onClick={() => {
+                    setShowFixMatches(true);
+                    setStep("map");
+                  }}
                 >
-                  Fix mapping
+                  Go back
                 </Button>
                 <Button
                   className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
@@ -944,7 +1025,7 @@ export default function BatchWizardPage() {
                   }}
                 >
                   {busy ? <Spinner className="mr-2 size-4" /> : null}
-                  {busy ? "Loading…" : "Continue to create PDFs"}
+                  {busy ? "Loading…" : "Create PDFs"}
                 </Button>
               </div>
             </div>
@@ -1136,14 +1217,15 @@ export default function BatchWizardPage() {
                 </div>
               )}
               {(progress?.generated > 0 || !(progress?.failed > 0)) && (
-                <>
+                <div className="space-y-4">
                   {progress?.generated > 0 && (
                     <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-4">
                       <p className="text-sm font-semibold text-slate-900">
-                        {progress.generated} letter PDF{progress.generated === 1 ? "" : "s"} ready
+                        Download ZIP
                       </p>
                       <p className="mt-1 text-xs text-slate-600">
-                        Download a ZIP now, or email from Outlook/Gmail below (PRO).
+                        Get all {progress.generated} letter PDF
+                        {progress.generated === 1 ? "" : "s"} on your computer.
                       </p>
                       <Button
                         type="button"
@@ -1166,158 +1248,171 @@ export default function BatchWizardPage() {
                       </Button>
                     </div>
                   )}
-                  <div className="rounded-xl border border-slate-200 px-4 py-3">
+
+                  <div className="rounded-xl border border-slate-200 px-4 py-4">
                     <p className="text-sm font-semibold text-slate-900">
-                      Email with Outlook / Gmail
+                      Email from Outlook or Gmail
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Optional — only if you want to send or draft emails from your mailbox.
+                    <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                      Letters go from <span className="font-medium">your</span> mailbox (not
+                      Zuvigo). Connect once, then create drafts or send.
                     </p>
-                  <div className="mt-3">
-                    <Label>Mode</Label>
-                    <select
-                      className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                      value={sendMode}
-                      onChange={(e) => setSendMode(e.target.value as any)}
-                      disabled={!canSend}
-                    >
-                      <option value="GENERATE_ONLY">Download only (no email)</option>
-                      {canSend && <option value="CREATE_DRAFTS">Create drafts (default)</option>}
-                      {canSend && <option value="SEND_NOW">Send now</option>}
-                    </select>
                     {!canSend && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Free plan creates PDFs only — upgrade to email letters from your Outlook or
-                        Gmail.
+                      <p className="mt-2 text-xs text-amber-800">
+                        Email needs PRO — you can still download PDFs above.
                       </p>
                     )}
-                  </div>
-                  {sendMode !== "GENERATE_ONLY" && canSend && (
-                    <>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl border-slate-200"
-                          disabled={busy}
-                          onClick={async () => {
-                            setBusy(true);
-                            try {
-                              localStorage.setItem(
-                                "letter_mail_return_to",
-                                `/letters/batches/${batchId}`
-                              );
-                              const { url } = await lettersApi.mailAuthorize("OUTLOOK");
-                              window.location.href = url;
-                            } catch (e: any) {
-                              toast.error(e.message);
-                              setBusy(false);
-                            }
-                          }}
-                        >
-                          Connect Outlook
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl border-slate-200"
-                          disabled={busy}
-                          onClick={async () => {
-                            setBusy(true);
-                            try {
-                              localStorage.setItem(
-                                "letter_mail_return_to",
-                                `/letters/batches/${batchId}`
-                              );
-                              const { url } = await lettersApi.mailAuthorize("GMAIL");
-                              window.location.href = url;
-                            } catch (e: any) {
-                              toast.error(e.message);
-                              setBusy(false);
-                            }
-                          }}
-                        >
-                          Connect Gmail
-                        </Button>
-                      </div>
-                      <div>
-                        <Label>Send as</Label>
-                        <select
-                          className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                          value={mailAccountId}
-                          onChange={(e) => setMailAccountId(e.target.value)}
-                        >
-                          <option value="">Select connected mailbox…</option>
-                          {mailAccounts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.provider} · {a.emailAddress}
-                            </option>
-                          ))}
-                        </select>
-                        {mailAccountId && (
-                          <p className="mt-1 text-xs text-slate-500">
-                            Sending as{" "}
-                            {mailAccounts.find((a) => a.id === mailAccountId)?.emailAddress ||
-                              "your mailbox"}
-                            .{" "}
-                            <button
-                              type="button"
-                              className="underline"
-                              onClick={async () => {
-                                try {
-                                  await lettersApi.disconnectMail(mailAccountId);
-                                  const accounts = await lettersApi.mailAccounts();
-                                  setMailAccounts(accounts.accounts);
-                                  setMailAccountId("");
-                                  toast.success("Mailbox disconnected");
-                                } catch (e: any) {
-                                  toast.error(e.message);
-                                }
-                              }}
-                            >
-                              Disconnect
-                            </button>
-                          </p>
+                    {canSend && (
+                      <div className="mt-3 space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant={sendMode === "CREATE_DRAFTS" ? "default" : "outline"}
+                            size="sm"
+                            className={cn(
+                              "rounded-xl",
+                              sendMode === "CREATE_DRAFTS" && "bg-indigo-600 hover:bg-indigo-700"
+                            )}
+                            onClick={() => setSendMode("CREATE_DRAFTS")}
+                          >
+                            Create drafts (safer)
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={sendMode === "SEND_NOW" ? "default" : "outline"}
+                            size="sm"
+                            className={cn(
+                              "rounded-xl",
+                              sendMode === "SEND_NOW" && "bg-indigo-600 hover:bg-indigo-700"
+                            )}
+                            onClick={() => setSendMode("SEND_NOW")}
+                          >
+                            Send now
+                          </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl border-slate-200"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              try {
+                                localStorage.setItem(
+                                  "letter_mail_return_to",
+                                  `/letters/batches/${batchId}`
+                                );
+                                const { url } = await lettersApi.mailAuthorize("OUTLOOK");
+                                window.location.href = url;
+                              } catch (e: any) {
+                                toast.error(e.message);
+                                setBusy(false);
+                              }
+                            }}
+                          >
+                            Connect Outlook
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl border-slate-200"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              try {
+                                localStorage.setItem(
+                                  "letter_mail_return_to",
+                                  `/letters/batches/${batchId}`
+                                );
+                                const { url } = await lettersApi.mailAuthorize("GMAIL");
+                                window.location.href = url;
+                              } catch (e: any) {
+                                toast.error(e.message);
+                                setBusy(false);
+                              }
+                            }}
+                          >
+                            Connect Gmail
+                          </Button>
+                        </div>
+                        <div>
+                          <Label>Send as</Label>
+                          <select
+                            className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                            value={mailAccountId}
+                            onChange={(e) => setMailAccountId(e.target.value)}
+                          >
+                            <option value="">Select connected mailbox…</option>
+                            {mailAccounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.provider} · {a.emailAddress}
+                              </option>
+                            ))}
+                          </select>
+                          {mailAccountId && (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Sending as{" "}
+                              {mailAccounts.find((a) => a.id === mailAccountId)?.emailAddress ||
+                                "your mailbox"}
+                              .{" "}
+                              <button
+                                type="button"
+                                className="underline"
+                                onClick={async () => {
+                                  try {
+                                    await lettersApi.disconnectMail(mailAccountId);
+                                    const accounts = await lettersApi.mailAccounts();
+                                    setMailAccounts(accounts.accounts);
+                                    setMailAccountId("");
+                                    toast.success("Mailbox disconnected");
+                                  } catch (e: any) {
+                                    toast.error(e.message);
+                                  }
+                                }}
+                              >
+                                Disconnect
+                              </button>
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <Label>Email subject</Label>
+                          <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                        </div>
+                        {sendMode === "SEND_NOW" && (
+                          <div>
+                            <Label>
+                              Confirm recipient count (
+                              {progress?.generated || preview?.eligibleCount || "?"})
+                            </Label>
+                            <Input
+                              type="number"
+                              value={confirmCount}
+                              onChange={(e) =>
+                                setConfirmCount(e.target.value ? Number(e.target.value) : "")
+                              }
+                            />
+                          </div>
                         )}
+                        <Button
+                          className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                          disabled={busy || !(progress?.generated > 0)}
+                          onClick={() => void doSend()}
+                        >
+                          {busy ? <Spinner className="mr-2 size-4" /> : null}
+                          {busy
+                            ? "Working…"
+                            : sendMode === "SEND_NOW"
+                              ? "Confirm & send now"
+                              : "Create email drafts"}
+                        </Button>
                       </div>
-                      <div>
-                        <Label>Subject</Label>
-                        <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
-                      </div>
-                    </>
-                  )}
-                  {sendMode === "SEND_NOW" && canSend && (
-                    <div>
-                      <Label>
-                        Confirm recipient count ({progress?.generated || preview?.eligibleCount || "?"})
-                      </Label>
-                      <Input
-                        type="number"
-                        value={confirmCount}
-                        onChange={(e) =>
-                          setConfirmCount(e.target.value ? Number(e.target.value) : "")
-                        }
-                      />
-                    </div>
-                  )}
-                  <Button
-                    className="rounded-xl bg-indigo-600 transition-colors duration-150 hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40"
-                    disabled={busy || !(progress?.generated > 0)}
-                    onClick={doSend}
-                  >
-                    {busy ? <Spinner className="mr-2 size-4" /> : null}
-                    {busy
-                      ? "Working…"
-                      : sendMode === "SEND_NOW" && canSend
-                        ? "Confirm & send now"
-                        : sendMode === "GENERATE_ONLY"
-                          ? "Finish"
-                          : "Continue with email"}
-                  </Button>
+                    )}
                   </div>
-                </>
+                </div>
               )}
             </div>
           )}

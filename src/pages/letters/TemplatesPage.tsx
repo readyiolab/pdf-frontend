@@ -70,6 +70,7 @@ export default function TemplatesPage() {
   const [polishContentJson, setPolishContentJson] = useState<any | null>(null);
   const [showSampleFill, setShowSampleFill] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const previewBrand = useMemo(
     () => brands.find((b: { id: string }) => b.id === previewBrandId) || null,
@@ -266,9 +267,12 @@ export default function TemplatesPage() {
         <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-3">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-700">
-              Library
+              Your letters
             </p>
             <h1 className="font-heading text-sm font-bold text-slate-900">Letter templates</h1>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Start from a starter on the left, or click New.
+            </p>
           </div>
           <Button
             variant="outline"
@@ -300,11 +304,13 @@ export default function TemplatesPage() {
               )}
             >
               <div className="truncate">{t.name}</div>
-              <div className="mt-0.5 text-[11px] font-normal text-slate-500">
-                {t.type.replace(/_/g, " ")} · v{t.version}
-              </div>
             </button>
           ))}
+          {templates.length === 0 && (
+            <p className="px-2 py-6 text-center text-xs text-slate-500">
+              No letters yet. Click New or Refresh starters.
+            </p>
+          )}
         </div>
         <div className="border-t border-slate-200 p-2">
           <Button
@@ -339,46 +345,81 @@ export default function TemplatesPage() {
                 className="h-9"
               />
             </div>
-            <div className="w-40">
-              <Label className="text-xs">Type</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                value={type}
-                onChange={(e) => setType(e.target.value as any)}
-                disabled={!!selectedId || generating}
-              >
-                {TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="w-44">
-              <Label className="text-xs">Preview brand</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                value={previewBrandId}
-                onChange={(e) => setPreviewBrandId(e.target.value)}
-              >
-                <option value="">None</option>
-                {brands.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
             <Button
-              type="button"
-              variant={showSampleFill ? "secondary" : "outline"}
-              size="sm"
-              className="h-9 rounded-xl border-slate-200"
-              onClick={() => setShowSampleFill((v) => !v)}
+              onClick={save}
+              disabled={saving || generating || polishing}
+              className="h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700"
             >
-              <Eye className="mr-1.5 size-3.5" />
-              {showSampleFill ? "Edit fields" : "Sample fill"}
+              {saving ? "Saving…" : "Save"}
             </Button>
+            {selectedId && (
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl border-slate-200"
+                disabled={generating || polishing}
+                onClick={() => navigate(`/letters/batches/new?templateId=${selectedId}`)}
+              >
+                Use in send
+              </Button>
+            )}
+            <div className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-xl border-slate-200"
+                onClick={() => setMoreOpen((v) => !v)}
+              >
+                More options <ChevronDown className="ml-1 size-3.5" />
+              </Button>
+              {moreOpen && (
+                <div className="absolute right-0 z-30 mt-1 w-64 space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                  <div>
+                    <Label className="text-xs">Letter type</Label>
+                    <select
+                      className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      value={type}
+                      onChange={(e) => setType(e.target.value as any)}
+                      disabled={!!selectedId || generating}
+                    >
+                      {TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t.replace(/_/g, " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Preview company look</Label>
+                    <select
+                      className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+                      value={previewBrandId}
+                      onChange={(e) => setPreviewBrandId(e.target.value)}
+                    >
+                      <option value="">None</option>
+                      {brands.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant={showSampleFill ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-9 w-full rounded-xl border-slate-200"
+                    onClick={() => {
+                      setShowSampleFill((v) => !v);
+                      setMoreOpen(false);
+                    }}
+                  >
+                    <Eye className="mr-1.5 size-3.5" />
+                    {showSampleFill ? "Back to editing" : "Preview with sample name"}
+                  </Button>
+                </div>
+              )}
+            </div>
             <div className="relative">
               <Button
                 type="button"
@@ -395,7 +436,7 @@ export default function TemplatesPage() {
                   </>
                 ) : (
                   <>
-                    Improve with AI <ChevronDown className="ml-1 size-3.5" />
+                    Help me write <ChevronDown className="ml-1 size-3.5" />
                   </>
                 )}
               </Button>
@@ -563,19 +604,17 @@ export default function TemplatesPage() {
             </div>
           </div>
           <p className="mx-auto mt-4 max-w-[720px] text-center text-[11px] text-slate-500">
-            Insert fields that change per employee (name, salary, date…). Letters are stored in cloud
-            storage when you send. Preview brand is visual only — you still pick a company look when
-            sending.
+            Write the letter. Put employee name/salary where they change. Then Save → Use in send.
           </p>
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-2 border-t border-slate-200 bg-white px-4 py-3">
+        <div className="flex shrink-0 flex-wrap gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:hidden">
           <Button
             onClick={save}
             disabled={saving || generating || polishing}
             className="h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700"
           >
-            {saving ? "Saving…" : "Save template"}
+            {saving ? "Saving…" : "Save"}
           </Button>
           {selectedId && (
             <Button

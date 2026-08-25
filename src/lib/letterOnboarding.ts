@@ -70,7 +70,7 @@ export const LETTER_STEP_META = [
     n: 3 as const,
     title: "Send many letters",
     short: "Send letters",
-    desc: "Upload a spreadsheet, review the rows, then create PDFs or email them.",
+    desc: "Upload a spreadsheet, review employees, then create PDFs or email them.",
     to: "/letters/batches/new",
     cta: "Start sending letters",
     recommended: false,
