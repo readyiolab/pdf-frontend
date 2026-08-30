@@ -75,6 +75,9 @@ type DiagramToolsContextValue = {
   setColorTarget: Dispatch<SetStateAction<"fill" | "stroke">>;
   aiOpen: boolean;
   setAiOpen: Dispatch<SetStateAction<boolean>>;
+  /** True while Space is held — temporary pan in select mode (draw.io-style) */
+  spacePanDown: boolean;
+  setSpacePanDown: Dispatch<SetStateAction<boolean>>;
   /** True when a drawing tool that should show the pen strip is active */
   showPenStrip: boolean;
 };
@@ -133,6 +136,7 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
   const [connectorStyle, setConnectorStyle] = useState<ConnectorStylePreset>(DEFAULT_CONNECTOR);
   const [colorTarget, setColorTarget] = useState<"fill" | "stroke">("fill");
   const [aiOpen, setAiOpen] = useState(false);
+  const [spacePanDown, setSpacePanDown] = useState(false);
 
   const setActiveTool = useCallback((action: SetStateAction<DrawingTool>) => {
     setActiveToolRaw((prev) => {
@@ -236,6 +240,26 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [openMenu, setDrawingTool]);
 
+  // Space+drag temporary pan (draw.io-style)
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " ") return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      setSpacePanDown(true);
+    };
+    const onUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " ") return;
+      setSpacePanDown(false);
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+    };
+  }, []);
+
   // Opening AI dock closes toolbar menus
   useEffect(() => {
     if (aiOpen) setOpenMenuState(null);
@@ -273,6 +297,8 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
       setColorTarget,
       aiOpen,
       setAiOpen,
+      spacePanDown,
+      setSpacePanDown,
       showPenStrip,
     }),
     [
@@ -291,6 +317,7 @@ export function DiagramToolsProvider({ children }: { children: ReactNode }) {
       connectorStyle,
       colorTarget,
       aiOpen,
+      spacePanDown,
       showPenStrip,
     ]
   );

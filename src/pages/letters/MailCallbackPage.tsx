@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { lettersApi } from "@/services/lettersApi";
+import { safeInternalPath } from "@/lib/safeRedirect";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -39,8 +40,10 @@ export default function MailCallbackPage() {
         localStorage.setItem("letter_mail_just_connected", account.emailAddress || "1");
         toast.success(`Connected ${account.emailAddress}`);
         setMessage(`Connected as ${account.emailAddress}. Returning…`);
-        const returnTo =
-          localStorage.getItem("letter_mail_return_to") || "/letters/batches/new";
+        const returnTo = safeInternalPath(
+          localStorage.getItem("letter_mail_return_to"),
+          "/letters/batches/new"
+        );
         localStorage.removeItem("letter_mail_return_to");
         navigate(returnTo, { replace: true });
       } catch (e: any) {

@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiService, type User } from "../services/api";
 import { clearOrgId } from "@/features/org";
 
 interface AuthContextType {
   user: User | null;
+  /** Truthy when a cookie session is active (legacy name kept for route guards). */
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -12,42 +14,47 @@ interface AuthContextType {
   logout: () => void;
   refreshProfile: () => Promise<User>;
   resendVerification: () => Promise<void>;
-  applyVerifiedSession: (data: { token: string; user: User }) => void;
+  applyVerifiedSession: (data: { user: User }) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Sentinel value — actual JWT lives in httpOnly cookies, not JS. */
+const SESSION_MARKER = "session";
+
+function clearClientSessionStorage() {
+  localStorage.removeItem("saas_jwt_token");
+  Object.keys(localStorage)
+    .filter((k) => k.startsWith("diagram-ai-chat-") || k.startsWith("cloud_"))
+    .forEach((k) => localStorage.removeItem(k));
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("saas_jwt_token"));
   const [loading, setLoading] = useState(true);
 
+  const token = user ? SESSION_MARKER : null;
+
   useEffect(() => {
-    const stored = localStorage.getItem("saas_jwt_token");
-    if (!stored) {
-      setLoading(false);
-      return;
-    }
     apiService
       .getProfile()
-      .then((data) => setUser(data.user))
-      .catch(() => {
-        localStorage.removeItem("saas_jwt_token");
-        setToken(null);
-        setUser(null);
-      })
+      .then((data) =>
+        setUser({
+          ...data.user,
+          emailVerified: Boolean(data.user.emailVerified),
+        })
+      )
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
-  const applySession = useCallback((data: { token: string; user: User }) => {
-    localStorage.setItem("saas_jwt_token", data.token);
-    setToken(data.token);
+  const applySession = useCallback((data: { user: User }) => {
     setUser({
       ...data.user,
       emailVerified: Boolean(data.user.emailVerified),
     });
     setLoading(false);
-    // Background refresh — never downgrade a just-verified session if profile races.
     void apiService
       .getProfile()
       .then((full) => {
@@ -58,9 +65,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       .catch(() => undefined);
   }, []);
-
-  // Important: do NOT flip global `loading` during login/register.
-  // That was painting a second full-page spinner over the auth modal.
 
   const login = useCallback(async (email: string, password: string) => {
     clearOrgId();
@@ -79,11 +83,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(() => {
     apiService.logout().catch(() => undefined);
-    localStorage.removeItem("saas_jwt_token");
+    clearClientSessionStorage();
+    queryClient.clear();
     clearOrgId();
-    setToken(null);
     setUser(null);
-  }, []);
+  }, [queryClient]);
 
   const refreshProfile = useCallback(async (): Promise<User> => {
     const data = await apiService.getProfile();
@@ -95,7 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await apiService.resendVerification();
   }, []);
 
-  const applyVerifiedSession = useCallback((data: { token: string; user: User }) => {
+  const applyVerifiedSession = useCallback((data: { user: User }) => {
     applySession(data);
   }, [applySession]);
 

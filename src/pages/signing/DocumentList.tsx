@@ -88,21 +88,32 @@ export default function DocumentList() {
   const [useTemplateId, setUseTemplateId] = useState<string | null>(null);
   const [useEmails, setUseEmails] = useState<string[]>([]);
   const [isUsingTemplate, setIsUsingTemplate] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | null>(null);
 
   const load = useCallback(async () => {
     try {
       if (mainTab === "templates") {
         const data = await signingApi.listTemplates();
         setTemplates(data.templates ?? []);
+        setPagination(null);
       } else {
         const [list, s] = await Promise.all([
           signingApi.listDocuments({
             status: status === "ALL" ? undefined : status,
             search: search || undefined,
+            page,
+            limit: 20,
           }),
           signingApi.getStats(),
         ]);
         setDocuments(list.documents ?? []);
+        setPagination(list.pagination ?? null);
         setStats(s);
       }
     } catch (err) {
@@ -110,6 +121,11 @@ export default function DocumentList() {
     } finally {
       setIsLoading(false);
     }
+  }, [status, search, mainTab, page]);
+
+  // Reset to first page when filters change.
+  useEffect(() => {
+    setPage(1);
   }, [status, search, mainTab]);
 
   // Debounced so typing in the search box doesn't fire a request per keystroke.
@@ -117,7 +133,7 @@ export default function DocumentList() {
     setIsLoading(true);
     const timer = setTimeout(load, search && mainTab === "documents" ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [load, search, mainTab]);
+  }, [load, search, mainTab, page]);
 
   const handleUpload = async (file: File, mode: "normal" | "self") => {
     if (file.type !== "application/pdf") {
@@ -447,6 +463,33 @@ export default function DocumentList() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {pagination && pagination.totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+              <p className="text-xs text-muted-foreground">
+                Page {pagination.page} of {pagination.totalPages} · {pagination.total} document
+                {pagination.total === 1 ? "" : "s"}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1 || isLoading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages || isLoading}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </>

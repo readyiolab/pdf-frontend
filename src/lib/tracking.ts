@@ -125,13 +125,10 @@ export async function bootstrapTracking(apiBaseUrl: string): Promise<void> {
   if (sessionStorage.getItem(SESSION_SENT_KEY) === attribution.visitorId) return;
 
   try {
-    const token = localStorage.getItem("saas_jwt_token");
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
-
     await fetch(`${apiBaseUrl}/tracking/visit`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(attribution),
       keepalive: true,
     });

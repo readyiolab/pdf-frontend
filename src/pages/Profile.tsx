@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Spinner } from "../components/ui/spinner";
-import { User, Mail, CreditCard, Clock, LogOut, Shield, Copy, Check, Cloud } from "lucide-react";
+import { User, Mail, CreditCard, Clock, LogOut, Shield, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { apiService } from "@/services/api";
@@ -115,7 +115,6 @@ function ContactAddressCard() {
 export const Profile: React.FC = () => {
   const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
-  const [copied, setCopied] = React.useState(false);
 
   // Redirect if not logged in and done loading
   useEffect(() => {
@@ -135,16 +134,6 @@ export const Profile: React.FC = () => {
   const handleLogout = () => {
     logout();
     navigate("/");
-  };
-
-  const copyToken = () => {
-    const token = localStorage.getItem("saas_jwt_token");
-    if (token) {
-      navigator.clipboard.writeText(token);
-      setCopied(true);
-      toast.success("API Token copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
-    }
   };
 
   // Calculate usage percentage safely
@@ -208,27 +197,15 @@ export const Profile: React.FC = () => {
           <div className="rounded-2xl border bg-card p-6 shadow-sm">
             <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
-              Developer API Token
+              Developer API access
             </h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Use this token to authenticate API requests. Do not share this token with anyone.
+              Your browser session uses secure httpOnly cookies. For programmatic API access, use
+              scoped API keys from the developer portal — never copy session credentials from the browser.
             </p>
-            <div className="flex items-center gap-2">
-              <Input
-                type="password"
-                value="••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••"
-                disabled
-                className="font-mono bg-muted/50"
-              />
-              <Button
-                variant="outline"
-                onClick={copyToken}
-                className="w-24 shrink-0 transition-all active:scale-95"
-              >
-                {copied ? <Check className="h-4 w-4 text-emerald-500 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                {copied ? "Copied" : "Copy"}
-              </Button>
-            </div>
+            <Button variant="outline" onClick={() => navigate("/developer")}>
+              View API documentation
+            </Button>
           </div>
 
           <div className="rounded-2xl border border-sky-200/80 bg-gradient-to-br from-sky-50/80 to-white p-6 shadow-sm dark:border-sky-500/20 dark:from-sky-500/10 dark:to-card">

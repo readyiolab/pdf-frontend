@@ -13,13 +13,12 @@ function isVerified(user: { emailVerified?: boolean | number | string } | null |
 
 /** Requires a logged-in session. */
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { token, loading } = useAuth();
+  const { user, loading } = useAuth();
 
-  // Token in localStorage is enough to enter; don't wait on /users/me.
-  if (loading && !token) {
+  if (loading) {
     return <RouteFallback />;
   }
-  if (!token) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -28,13 +27,12 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * Workspace and basic PDF tools stay available without verification.
  */
 export function VerifiedRoute({ children }: { children: React.ReactNode }) {
-  const { token, user, loading, refreshProfile } = useAuth();
+  const { user, loading, refreshProfile } = useAuth();
   const [checking, setChecking] = useState(false);
   const refreshed = useRef(false);
 
-  // If the gate is about to block, re-fetch profile once (e.g. user verified in another tab).
   useEffect(() => {
-    if (!token || loading || !user || user.isGuest || isVerified(user) || refreshed.current) {
+    if (loading || !user || user.isGuest || isVerified(user) || refreshed.current) {
       return;
     }
     refreshed.current = true;
@@ -42,16 +40,14 @@ export function VerifiedRoute({ children }: { children: React.ReactNode }) {
     void refreshProfile()
       .catch(() => undefined)
       .finally(() => setChecking(false));
-  }, [token, loading, user, refreshProfile]);
+  }, [loading, user, refreshProfile]);
 
-  if (!token) {
-    if (loading) return <RouteFallback />;
-    return <Navigate to="/login" replace />;
+  if (loading) {
+    return <RouteFallback />;
   }
 
-  // Profile still hydrating — show outlet skeleton, not a blank hang.
-  if (loading && !user) {
-    return <RouteFallback />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
 
   if (checking) {

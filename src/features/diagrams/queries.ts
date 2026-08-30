@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/services/api";
 import { diagramsApi } from "@/services/diagramsApi";
 import { ensureOrg, setOrgId, clearOrgId, useOrgStore } from "@/features/org";
@@ -6,7 +6,9 @@ import { diagramKeys } from "./keys";
 
 function isMembershipError(err: unknown): boolean {
   if (!(err instanceof ApiError) || err.status !== 403) return false;
-  return /not a member of this organization/i.test(err.message);
+  return /not a member of this organization|do not have access to this organization/i.test(
+    err.message
+  );
 }
 
 /** Run an org-scoped call; on stale-org 403, clear + re-bootstrap and retry once. */
@@ -28,11 +30,17 @@ export async function withOrgRetry<T>(
 export function useDiagramList(folderId?: string | null, userId?: string | null) {
   const orgId = useOrgStore((s) => s.getOrgIdForUser(userId));
 
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: diagramKeys.list(orgId ?? "pending", folderId),
-    queryFn: async () => {
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => {
       const { orgId: oid, result } = await withOrgRetry(userId, (id) =>
-        Promise.all([diagramsApi.list(id, folderId), diagramsApi.listFolders(id)])
+        Promise.all([
+          diagramsApi.list(id, folderId, pageParam, 50),
+          pageParam === 1
+            ? diagramsApi.listFolders(id)
+            : Promise.resolve({ folders: [] as Awaited<ReturnType<typeof diagramsApi.listFolders>>["folders"] }),
+        ])
       );
       if (oid !== orgId) {
         setOrgId(oid, { userId });
@@ -41,7 +49,12 @@ export function useDiagramList(folderId?: string | null, userId?: string | null)
         orgId: oid,
         diagrams: result[0].diagrams,
         folders: result[1].folders,
+        pagination: result[0].pagination,
       };
+    },
+    getNextPageParam: (lastPage) => {
+      const { page, totalPages } = lastPage.pagination;
+      return page < totalPages ? page + 1 : undefined;
     },
   });
 }

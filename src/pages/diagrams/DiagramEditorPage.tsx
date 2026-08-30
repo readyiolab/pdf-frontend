@@ -4,28 +4,24 @@ import { UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  DiagramCanvas,
-  type DiagramCanvasHandle,
-  type LayoutKindCanvas,
-  type SelectionInfo,
+import type {
+  DiagramCanvasHandle,
+  LayoutKindCanvas,
+  SelectionInfo,
 } from "@/components/diagrams/DiagramCanvas";
-import { ShapePanel } from "@/components/diagrams/ShapePanel";
-import { FormatPanel } from "@/components/diagrams/FormatPanel";
-import { MenuBar } from "@/components/diagrams/MenuBar";
-import { ToolRail } from "@/components/diagrams/ToolRail";
-import { PageTabs } from "@/components/diagrams/PageTabs";
-import { AiChatPanel } from "@/components/diagrams/AiChatPanel";
-import { SelectionToolbar } from "@/components/diagrams/SelectionToolbar";
-import { AnalyzePanel } from "@/components/diagrams/AnalyzePanel";
-import { VersionHistoryPanel } from "@/components/diagrams/VersionHistoryPanel";
-import { PresentBar } from "@/components/diagrams/PresentBar";
 import {
   DiagramToolsProvider,
   isTypingTarget,
 } from "@/components/diagrams/DiagramToolsContext";
+import { MenuBar } from "@/components/diagrams/MenuBar";
+import { AiChatPanel } from "@/components/diagrams/AiChatPanel";
+import { AnalyzePanel } from "@/components/diagrams/AnalyzePanel";
+import { VersionHistoryPanel } from "@/components/diagrams/VersionHistoryPanel";
 import { ShareDialog } from "@/components/diagrams/ShareDialog";
 import { PageSetupDialog } from "@/components/diagrams/PageSetupDialog";
+import { DiagramWorkspace } from "@/components/diagrams/DiagramWorkspace";
+import { KeyboardShortcutsDialog } from "@/components/diagrams/KeyboardShortcutsDialog";
+import { TextPromptDialog } from "@/components/diagrams/TextPromptDialog";
 import {
   emptyDocument,
   emptyPage,
@@ -117,7 +113,10 @@ function DiagramEditorInner() {
   const [strokeColor, setStrokeColor] = useState("#6c8ebf");
   const loadedRef = useRef(false);
   const pageQueryApplied = useRef(false);
-  const contentRevisionRef = useRef(0);
+  const graphReadyRef = useRef(false);
+  const pendingLoadRef = useRef(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [mermaidOpen, setMermaidOpen] = useState(false);
 
   const settings: DiagramSettings = doc.settings ?? {};
   const activePage = useMemo(
@@ -125,12 +124,10 @@ function DiagramEditorInner() {
     [doc.pages, activePageId]
   );
 
-  // Bump when doc identity / page content from server or AI should reload canvas
+  // Reload canvas when server version or active page changes
   const contentRevision = useMemo(() => {
-    return `${currentVersion ?? 0}|${doc.pages
-      .map((p) => `${p.id}:${p.nodes.length}:${p.edges.length}`)
-      .join("|")}`;
-  }, [doc.pages, currentVersion]);
+    return `${currentVersion ?? 0}|${activePageId}`;
+  }, [currentVersion, activePageId]);
 
   const aiOpen = tools.aiOpen;
   const setAiOpen = tools.setAiOpen;
@@ -152,20 +149,33 @@ function DiagramEditorInner() {
     return () => window.removeEventListener("diagram-tool-insert-text", onInsertText);
   }, [setDirty]);
 
-  // Load page into canvas when ready or when document content revision changes
+  const flushCanvasLoad = useCallback(
+    (fit: boolean) => {
+      const page = doc.pages.find((p) => p.id === activePageId);
+      if (!page) return;
+      canvasRef.current?.loadPage(page, { fit });
+      if (fit) loadedRef.current = true;
+    },
+    [doc.pages, activePageId]
+  );
+
+  const handleGraphReady = useCallback(() => {
+    graphReadyRef.current = true;
+    if (pendingLoadRef.current) {
+      pendingLoadRef.current = false;
+      flushCanvasLoad(!loadedRef.current);
+    }
+  }, [flushCanvasLoad]);
+
+  // Load page into canvas when ready or when document revision changes
   useEffect(() => {
     if (loading) return;
-    const page = doc.pages.find((p) => p.id === activePageId);
-    if (!page) return;
-    const t = setTimeout(() => {
-      canvasRef.current?.loadPage(page);
-      loadedRef.current = true;
-      contentRevisionRef.current += 1;
-    }, 50);
-    return () => clearTimeout(t);
-    // contentRevision catches hydrate / restore / AI replace when page id stays same
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, activePageId, diagramId, contentRevision]);
+    if (graphReadyRef.current) {
+      flushCanvasLoad(!loadedRef.current);
+    } else {
+      pendingLoadRef.current = true;
+    }
+  }, [loading, activePageId, diagramId, contentRevision, flushCanvasLoad]);
 
   const syncActivePageFromCanvas = useCallback((): DiagramDocument => {
     const serialized = canvasRef.current?.serializePage({
@@ -186,16 +196,13 @@ function DiagramEditorInner() {
 
   const applyPageToCanvas = useCallback(
     (page: DiagramPage) => {
+      const merged = { ...page, id: activePageId, name: activePage.name };
       setDoc((d) => ({
         ...d,
-        pages: d.pages.map((p) =>
-          p.id === activePageId ? { ...page, id: activePageId, name: p.name } : p
-        ),
+        pages: d.pages.map((p) => (p.id === activePageId ? merged : p)),
       }));
       setDirty(true);
-      setTimeout(() => {
-        canvasRef.current?.loadPage({ ...page, id: activePageId, name: activePage.name });
-      }, 50);
+      canvasRef.current?.loadPage(merged, { fit: false });
     },
     [activePageId, activePage.name]
   );
@@ -218,11 +225,19 @@ function DiagramEditorInner() {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Save failed";
       setError(msg);
-      if (/not a member of this organization/i.test(msg)) setMembershipHint(true);
+      if (/not a member of this organization|do not have access to this organization/i.test(msg)) setMembershipHint(true);
     } finally {
       setSaving(false);
     }
   }, [orgId, diagramId, saving, syncActivePageFromCanvas, title, user?.id]);
+
+  useEffect(() => {
+    if (!dirty || !orgId || !diagramId || saving) return;
+    const t = setTimeout(() => {
+      void save();
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [dirty, orgId, diagramId, saving, save]);
 
   // Ctrl+S and shortcuts
   useEffect(() => {
@@ -455,11 +470,6 @@ function DiagramEditorInner() {
     pageQueryApplied.current = true;
   }, [loading, searchParams, doc.pages]);
 
-  const addShape = (shape: ShapeDef) => {
-    canvasRef.current?.addShape(shape);
-    setDirty(true);
-  };
-
   const onDropShape = (e: React.DragEvent) => {
     e.preventDefault();
     const raw = e.dataTransfer.getData("application/x-diagram-shape");
@@ -525,9 +535,8 @@ function DiagramEditorInner() {
     else downloadText(`${base}.openapi.yaml`, toOpenApi(page), "text/yaml");
   };
 
-  const importMermaid = () => {
-    const text = window.prompt("Paste Mermaid flowchart (TD/LR):");
-    if (!text?.trim()) return;
+  const importMermaidFromText = (text: string) => {
+    if (!text.trim()) return;
     try {
       const imported = fromMermaid(text);
       const live = getLivePage();
@@ -576,9 +585,7 @@ function DiagramEditorInner() {
       ),
     }));
     setDirty(true);
-    setTimeout(() => {
-      canvasRef.current?.loadPage({ ...themed, id: activePageId, name: activePage.name });
-    }, 50);
+    canvasRef.current?.loadPage({ ...themed, id: activePageId, name: activePage.name }, { fit: false });
   };
 
   const runLayoutKind = (kind: string) => {
@@ -714,7 +721,7 @@ function DiagramEditorInner() {
     if (mode === "replace") {
       const page = upgraded.pages[0]!;
       applyPageToCanvas(page);
-      setTimeout(() => canvasRef.current?.autoLayout(), 80);
+      requestAnimationFrame(() => canvasRef.current?.autoLayout());
       return;
     }
     if (mode === "newPage") {
@@ -762,7 +769,7 @@ function DiagramEditorInner() {
       setTitle(diagram.title);
       setCurrentVersion(diagram.currentVersion ?? version);
       setDirty(false);
-      setTimeout(() => canvasRef.current?.loadPage(content.pages[0]!), 50);
+      loadedRef.current = false;
       toast.success(`Restored v${version}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Restore failed");
@@ -815,7 +822,7 @@ function DiagramEditorInner() {
         { type: "item" as const, label: "Export Kubernetes…", onClick: () => exportCode("k8s") },
         { type: "item" as const, label: "Export OpenAPI…", onClick: () => exportCode("openapi") },
         { type: "sep" as const },
-        { type: "item" as const, label: "Import Mermaid…", onClick: importMermaid },
+        { type: "item" as const, label: "Import Mermaid…", onClick: () => setMermaidOpen(true) },
         {
           type: "item" as const,
           label: "Print…",
@@ -978,10 +985,7 @@ function DiagramEditorInner() {
         {
           type: "item" as const,
           label: "Keyboard shortcuts",
-          onClick: () =>
-            alert(
-                  "Ctrl+S Save · Ctrl+/ AI · F5 Present · Ctrl+Z / Ctrl+Shift+Z Undo/Redo · Ctrl+C/X/V/D · Delete · Arrows nudge · Ctrl+wheel zoom"
-            ),
+          onClick: () => setShortcutsOpen(true),
         },
       ],
     },
@@ -1043,72 +1047,6 @@ function DiagramEditorInner() {
         </div>
       </div>
 
-      <ToolRail
-        zoom={zoom}
-        onZoomChange={(z) => {
-          canvasRef.current?.setZoom(z);
-          setZoom(z);
-        }}
-        onZoomIn={() => canvasRef.current?.zoomIn()}
-        onZoomOut={() => canvasRef.current?.zoomOut()}
-        onUndo={() => canvasRef.current?.undo()}
-        onRedo={() => canvasRef.current?.redo()}
-        onDelete={() => canvasRef.current?.deleteSelection()}
-        onAutoLayout={() => {
-          canvasRef.current?.autoLayout();
-          setLastLayout("vertical-flow");
-        }}
-        onMagicCleanup={() => canvasRef.current?.magicCleanup()}
-        onAiGenerate={() => setAiOpen(true)}
-        onExportPng={() => void doExport("png")}
-        onExportSvg={() => void doExport("svg")}
-        onExportPdf={() => void doExport("pdf")}
-        onInsertTable={(rows, cols, opts) => {
-          canvasRef.current?.insertTable(rows, cols, {
-            title: opts.withTitle,
-            container: opts.withContainer,
-          });
-          setDirty(true);
-        }}
-        onInsertText={() => {
-          canvasRef.current?.addShape({
-            id: "text",
-            label: "Text",
-            shape: "text",
-            w: 120,
-            h: 40,
-            category: "general",
-            preview: "rect",
-          });
-          setDirty(true);
-        }}
-        onInsertContainer={() => {
-          canvasRef.current?.insertContainer("Container");
-          setDirty(true);
-        }}
-        onApplyTheme={applyTheme}
-        onToggleShapesPanel={() => setShapesPanelOpen((v) => !v)}
-        onToggleFormatPanel={() => setFormatPanelOpen((v) => !v)}
-        onToggleLeftPanel={() => setShapesPanelOpen((v) => !v)}
-        onPresent={() => setPresentOpen(true)}
-        onAnalyze={() => void runAnalyze()}
-        onExplain={() => void runExplain()}
-        onVersions={() => setSidePanel("versions")}
-        onFillColor={(c) => {
-          setFillColor(c);
-          canvasRef.current?.applyStyle({ fillColor: c });
-        }}
-        onStrokeColor={(c) => {
-          setStrokeColor(c);
-          canvasRef.current?.applyStyle({ strokeColor: c });
-        }}
-        onLayout={runLayoutKind}
-        fillColor={fillColor}
-        strokeColor={strokeColor}
-        currentTheme={settings.theme ?? "automatic"}
-        lastLayout={lastLayout}
-      />
-
       {(error || membershipHint) && (
         <div className="border-b border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
           {error}
@@ -1124,169 +1062,190 @@ function DiagramEditorInner() {
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
-        {shapesPanelOpen ? <ShapePanel onAddShape={addShape} /> : null}
-        <div
-          className="relative min-w-0 flex-1"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={onDropShape}
-        >
-          <DiagramCanvas
-            ref={canvasRef}
-            settings={settings}
-            onDirty={markDirty}
-            onSelectionChange={onSelectionChange}
-            onZoomChange={setZoom}
-            onShapePlaced={() => {
-              tools.setDrawingTool("select");
-              tools.setPendingShape(null);
-              setDirty(true);
-            }}
-          />
-
-          <SelectionToolbar
-            visible={Boolean(selection?.cells.length && selBounds && !presentOpen)}
-            x={(selBounds?.x ?? 0) + (selBounds?.w ?? 0) / 2}
-            y={selBounds?.y ?? 0}
-            onConnect={() => {
-              tools.setDrawingTool("connector");
-              canvasRef.current?.setToolMode("connector");
-            }}
-            onDuplicate={() => canvasRef.current?.duplicate()}
-            onStyle={() => setFormatPanelOpen(true)}
-            onAiAction={(action, text) => void runSelectionAiEdit(action, text)}
-            onDelete={() => canvasRef.current?.deleteSelection()}
-            onLock={() => canvasRef.current?.lockSelection(true)}
-            onGroup={() => canvasRef.current?.groupSelection()}
-          />
-
-          {presentOpen ? (
-            <PresentBar
-              playing={presentPlaying}
-              speed={presentSpeed}
-              onPlay={() => {
-                canvasRef.current?.playFlow();
-                setPresentPlaying(true);
-              }}
-              onPause={() => {
-                canvasRef.current?.pauseFlow();
-                setPresentPlaying(false);
-              }}
-              onRestart={() => {
-                canvasRef.current?.restartFlow();
-                setPresentPlaying(true);
-              }}
-              onStep={() => {
-                canvasRef.current?.stepFlow();
-                setPresentPlaying(false);
-              }}
-              onStepBack={() => {
-                canvasRef.current?.stepFlowBack();
-                setPresentPlaying(false);
-              }}
-              onSpeed={(s) => {
-                setPresentSpeed(s);
-                canvasRef.current?.setFlowSpeed(s);
-              }}
-              onExit={() => {
-                canvasRef.current?.pauseFlow();
-                setPresentPlaying(false);
-                setPresentOpen(false);
-              }}
-            />
-          ) : null}
-        </div>
-
-        {formatPanelOpen ? (
-          <FormatPanel
-            settings={settings}
-            onSettingsChange={applySettings}
-            selection={selection}
-            onApplyStyle={applyStyle}
-            onOpenPageSetup={() => setPageSetupOpen(true)}
-            onThemeChange={applyTheme}
-          />
-        ) : null}
-
-        {sidePanel === "analyze" ? (
-          <AnalyzePanel
-            open
-            issues={analyzeIssues}
-            onClose={() => setSidePanel("none")}
-            onFocus={(ids) => canvasRef.current?.focusNodes(ids)}
-            onRerun={() => void runAnalyze()}
-          />
-        ) : null}
-
-        {sidePanel === "versions" && orgId && diagramId ? (
-          <VersionHistoryPanel
-            open
-            organizationId={orgId}
-            diagramId={diagramId}
-            currentVersion={currentVersion}
-            onClose={() => setSidePanel("none")}
-            onRestore={(v) => void restoreVersion(v)}
-          />
-        ) : null}
-
-        {sidePanel === "explain" ? (
-          <aside className="flex h-full w-[280px] shrink-0 flex-col border-l border-[#cfd8e3] bg-[#f8fafc]">
-            <header className="flex h-11 items-center justify-between border-b border-[#e2e8f0] px-3">
-              <h2 className="text-sm font-semibold">Explain</h2>
-              <Button type="button" variant="ghost" size="icon-xs" onClick={() => setSidePanel("none")}>
-                ×
-              </Button>
-            </header>
-            {explainSummary ? (
-              <p className="border-b border-[#e2e8f0] px-3 py-2 text-xs text-[#475569]">{explainSummary}</p>
-            ) : null}
-            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-              {explainSteps.map((step) => (
-                <button
-                  key={step.index}
-                  type="button"
-                  className="w-full rounded-md border border-[#e2e8f0] bg-white p-2.5 text-left hover:border-[#93c5fd]"
-                  onClick={() => canvasRef.current?.focusNodes(step.nodeIds ?? [])}
-                >
-                  <p className="text-xs font-semibold text-[#0f172a]">
-                    {step.index}. {step.title}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-[#64748b]">{step.detail}</p>
-                </button>
-              ))}
-              {!explainSteps.length ? (
-                <p className="p-2 text-xs text-[#94a3b8]">No steps yet</p>
-              ) : null}
-            </div>
-          </aside>
-        ) : null}
-
-        {orgId && aiOpen ? (
-          <AiChatPanel
-            open={aiOpen}
-            onClose={() => setAiOpen(false)}
-            organizationId={orgId}
-            diagramId={diagramId}
-            currentPage={getLivePage()}
-            onInsertDocument={insertAiDocument}
-            onInsertPage={(page) => applyPageToCanvas(page)}
-            onEditedPage={(page) => applyPageToCanvas(page)}
-          />
-        ) : null}
-      </div>
-
-      <PageTabs
+      <DiagramWorkspace
+        canvasRef={canvasRef}
+        settings={settings}
+        onDirty={markDirty}
+        onGraphReady={handleGraphReady}
         pages={doc.pages}
         activePageId={activePageId}
-        onSelect={switchPage}
-        onInsert={insertPage}
-        onRename={renamePage}
-        onRemove={removePage}
-        onDuplicate={duplicatePage}
-        onDeleteAll={deleteAllPages}
-        onSort={sortPages}
-        onMove={movePage}
+        onSelectPage={switchPage}
+        onInsertPage={insertPage}
+        onRenamePage={renamePage}
+        onRemovePage={removePage}
+        onDuplicatePage={duplicatePage}
+        onDeleteAllPages={deleteAllPages}
+        onSortPages={sortPages}
+        onMovePage={movePage}
         onOpenInNewWindow={openPageInNewWindow}
+        shapesPanelOpen={shapesPanelOpen}
+        formatPanelOpen={formatPanelOpen}
+        onToggleShapesPanel={() => setShapesPanelOpen((v) => !v)}
+        onToggleFormatPanel={() => setFormatPanelOpen((v) => !v)}
+        selection={selection}
+        selBounds={selBounds}
+        onSelectionChange={onSelectionChange}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        onApplySettings={applySettings}
+        onApplyStyle={applyStyle}
+        onThemeChange={applyTheme}
+        onPageSetup={() => setPageSetupOpen(true)}
+        onDropShape={onDropShape}
+        presentOpen={presentOpen}
+        presentPlaying={presentPlaying}
+        presentSpeed={presentSpeed}
+        onPresentPlay={() => {
+          canvasRef.current?.playFlow();
+          setPresentPlaying(true);
+        }}
+        onPresentPause={() => {
+          canvasRef.current?.pauseFlow();
+          setPresentPlaying(false);
+        }}
+        onPresentRestart={() => {
+          canvasRef.current?.restartFlow();
+          setPresentPlaying(true);
+        }}
+        onPresentStep={() => {
+          canvasRef.current?.stepFlow();
+          setPresentPlaying(false);
+        }}
+        onPresentStepBack={() => {
+          canvasRef.current?.stepFlowBack();
+          setPresentPlaying(false);
+        }}
+        onPresentSpeed={(s) => {
+          setPresentSpeed(s);
+          canvasRef.current?.setFlowSpeed(s);
+        }}
+        onPresentExit={() => {
+          canvasRef.current?.pauseFlow();
+          setPresentPlaying(false);
+          setPresentOpen(false);
+        }}
+        onSelectionAiEdit={(action, text) => void runSelectionAiEdit(action, text)}
+        toolRail={{
+          onUndo: () => canvasRef.current?.undo(),
+          onRedo: () => canvasRef.current?.redo(),
+          onDelete: () => canvasRef.current?.deleteSelection(),
+          onAutoLayout: () => {
+            canvasRef.current?.autoLayout();
+            setLastLayout("vertical-flow");
+          },
+          onMagicCleanup: () => canvasRef.current?.magicCleanup(),
+          onAiGenerate: () => setAiOpen(true),
+          onExportPng: () => void doExport("png"),
+          onExportSvg: () => void doExport("svg"),
+          onExportPdf: () => void doExport("pdf"),
+          onInsertTable: (rows, cols, opts) => {
+            canvasRef.current?.insertTable(rows, cols, {
+              title: opts.withTitle,
+              container: opts.withContainer,
+            });
+            setDirty(true);
+          },
+          onInsertText: () => {
+            canvasRef.current?.addShape({
+              id: "text",
+              label: "Text",
+              shape: "text",
+              w: 120,
+              h: 40,
+              category: "general",
+              preview: "rect",
+            });
+            setDirty(true);
+          },
+          onInsertContainer: () => {
+            canvasRef.current?.insertContainer("Container");
+            setDirty(true);
+          },
+          onApplyTheme: applyTheme,
+          onPresent: () => setPresentOpen(true),
+          onAnalyze: () => void runAnalyze(),
+          onExplain: () => void runExplain(),
+          onVersions: () => setSidePanel("versions"),
+          onFillColor: (c) => {
+            setFillColor(c);
+            canvasRef.current?.applyStyle({ fillColor: c });
+          },
+          onStrokeColor: (c) => {
+            setStrokeColor(c);
+            canvasRef.current?.applyStyle({ strokeColor: c });
+          },
+          onLayout: runLayoutKind,
+          fillColor,
+          strokeColor,
+          currentTheme: settings.theme ?? "automatic",
+          lastLayout,
+        }}
+        sidePanels={
+          <>
+            {sidePanel === "analyze" ? (
+              <AnalyzePanel
+                open
+                issues={analyzeIssues}
+                onClose={() => setSidePanel("none")}
+                onFocus={(ids) => canvasRef.current?.focusNodes(ids)}
+                onRerun={() => void runAnalyze()}
+              />
+            ) : null}
+            {sidePanel === "versions" && orgId && diagramId ? (
+              <VersionHistoryPanel
+                open
+                organizationId={orgId}
+                diagramId={diagramId}
+                currentVersion={currentVersion}
+                onClose={() => setSidePanel("none")}
+                onRestore={(v) => void restoreVersion(v)}
+              />
+            ) : null}
+            {sidePanel === "explain" ? (
+              <aside className="flex h-full w-[280px] shrink-0 flex-col border-l border-[#cfd8e3] bg-[#f8fafc]">
+                <header className="flex h-11 items-center justify-between border-b border-[#e2e8f0] px-3">
+                  <h2 className="text-sm font-semibold">Explain</h2>
+                  <Button type="button" variant="ghost" size="icon-xs" onClick={() => setSidePanel("none")}>
+                    ×
+                  </Button>
+                </header>
+                {explainSummary ? (
+                  <p className="border-b border-[#e2e8f0] px-3 py-2 text-xs text-[#475569]">{explainSummary}</p>
+                ) : null}
+                <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+                  {explainSteps.map((step) => (
+                    <button
+                      key={step.index}
+                      type="button"
+                      className="w-full rounded-md border border-[#e2e8f0] bg-white p-2.5 text-left hover:border-[#93c5fd]"
+                      onClick={() => canvasRef.current?.focusNodes(step.nodeIds ?? [])}
+                    >
+                      <p className="text-xs font-semibold text-[#0f172a]">
+                        {step.index}. {step.title}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-[#64748b]">{step.detail}</p>
+                    </button>
+                  ))}
+                  {!explainSteps.length ? (
+                    <p className="p-2 text-xs text-[#94a3b8]">No steps yet</p>
+                  ) : null}
+                </div>
+              </aside>
+            ) : null}
+            {orgId && aiOpen ? (
+              <AiChatPanel
+                open={aiOpen}
+                onClose={() => setAiOpen(false)}
+                organizationId={orgId}
+                diagramId={diagramId}
+                currentPage={getLivePage()}
+                onInsertDocument={insertAiDocument}
+                onInsertPage={(page) => applyPageToCanvas(page)}
+                onEditedPage={(page) => applyPageToCanvas(page)}
+              />
+            ) : null}
+          </>
+        }
       />
 
       <PageSetupDialog
@@ -1307,6 +1266,15 @@ function DiagramEditorInner() {
           diagramId={diagramId}
         />
       )}
+
+      <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <TextPromptDialog
+        open={mermaidOpen}
+        title="Import Mermaid flowchart"
+        placeholder="Paste Mermaid flowchart (TD/LR)…"
+        onClose={() => setMermaidOpen(false)}
+        onSubmit={importMermaidFromText}
+      />
     </div>
   );
 }

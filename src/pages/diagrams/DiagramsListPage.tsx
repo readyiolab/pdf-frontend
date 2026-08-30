@@ -24,11 +24,12 @@ export default function DiagramsListPage() {
   const deleteMutation = useDeleteDiagram(user?.id);
   const folderMutation = useCreateFolder(user?.id);
 
-  const orgId = listQuery.data?.orgId ?? null;
-  const diagrams = listQuery.data?.diagrams ?? [];
-  const folders = listQuery.data?.folders ?? [];
+  const orgId = listQuery.data?.pages[0]?.orgId ?? null;
+  const diagrams = listQuery.data?.pages.flatMap((p) => p.diagrams) ?? [];
+  const folders = listQuery.data?.pages[0]?.folders ?? [];
   const loading = listQuery.isLoading;
   const error = listQuery.error instanceof Error ? listQuery.error.message : null;
+  const hasMore = listQuery.hasNextPage;
 
   const createDiagram = async () => {
     try {
@@ -157,6 +158,18 @@ export default function DiagramsListPage() {
               </div>
             ))}
           </div>
+          {hasMore ? (
+            <div className="mt-6 flex justify-center">
+              <Button
+                variant="outline"
+                className="rounded-lg"
+                disabled={listQuery.isFetchingNextPage}
+                onClick={() => void listQuery.fetchNextPage()}
+              >
+                {listQuery.isFetchingNextPage ? <Spinner className="size-4" /> : "Load more"}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

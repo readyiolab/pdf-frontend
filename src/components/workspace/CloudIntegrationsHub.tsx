@@ -212,7 +212,6 @@ export const CloudIntegrationsHub: React.FC = () => {
       await apiService.connectCloud(targetId, oauthEmail, token).catch(() => null);
 
       localStorage.setItem(`cloud_conn_${targetId}`, oauthEmail);
-      localStorage.setItem(`cloud_token_${targetId}`, token);
 
       setProviders((prev) =>
         prev.map((p) =>
@@ -246,7 +245,6 @@ export const CloudIntegrationsHub: React.FC = () => {
       } catch (_e) {}
 
       localStorage.removeItem(`cloud_conn_${provider.id}`);
-      localStorage.removeItem(`cloud_token_${provider.id}`);
 
       setProviders((prev) =>
         prev.map((p) =>

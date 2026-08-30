@@ -27,6 +27,7 @@ import {
   type Cell,
   type CellStyle,
   type CellState,
+  type FitPlugin,
 } from "@maxgraph/core";
 import "@maxgraph/core/css/common.css";
 import {
@@ -46,6 +47,15 @@ import { allShapes, type ShapeDef } from "@/lib/diagram/shapes";
 import { type StrokePoint, erasePolylineByRadius } from "@/lib/diagram/freehand";
 import { CUSTOM_SHAPE, registerDiagramCustomShapes } from "@/lib/diagram/customShapes";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 registerDiagramCustomShapes();
 
@@ -103,6 +113,50 @@ const CARDINAL_CONSTRAINTS = [
   new ConnectionConstraint(new Point(0.5, 1), true, "S"),
   new ConnectionConstraint(new Point(0, 0.5), true, "W"),
 ];
+
+const VIEWPORT_OFFSET = 40;
+
+function fitGraphToContent(graph: Graph, onZoom?: (z: number) => void) {
+  const fitPlugin = graph.getPlugin("fit") as FitPlugin | null;
+  if (fitPlugin?.fit) {
+    const scale = fitPlugin.fit({ margin: 32 });
+    const capped = Math.min(scale, 1);
+    if (capped !== scale) graph.getView().setScale(capped);
+    onZoom?.(capped);
+    return;
+  }
+  const bounds = graph.getGraphBounds();
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+    graph.getView().setTranslate(VIEWPORT_OFFSET, VIEWPORT_OFFSET);
+    graph.getView().setScale(1);
+    onZoom?.(1);
+    return;
+  }
+  const container = graph.container;
+  const cw = container?.clientWidth ?? 800;
+  const ch = container?.clientHeight ?? 600;
+  const pad = 48;
+  const scale = Math.min(
+    1,
+    (cw - pad) / bounds.width,
+    (ch - pad) / bounds.height
+  );
+  graph.getView().setScale(scale);
+  const cx = bounds.x + bounds.width / 2;
+  const cy = bounds.y + bounds.height / 2;
+  graph.getView().setTranslate(cw / 2 / scale - cx, ch / 2 / scale - cy);
+  onZoom?.(scale);
+}
+
+function syncPaperOverlay(graph: Graph, paperEl: HTMLElement | null) {
+  if (!paperEl) return;
+  const tr = graph.getView().getTranslate();
+  const scale = graph.getView().getScale();
+  paperEl.style.left = `${tr.x * scale}px`;
+  paperEl.style.top = `${tr.y * scale}px`;
+  paperEl.style.transform = `scale(${scale})`;
+  paperEl.style.transformOrigin = "0 0";
+}
 
 function snapToGrid(n: number, grid: number) {
   return Math.round(n / grid) * grid;
@@ -331,31 +385,31 @@ function applyDefaultEdgeStyle(graph: Graph, preset: DefaultEdgeStyle) {
 function applyToolModeToGraph(
   graph: Graph,
   mode: CanvasToolMode,
-  opts: { readOnly: boolean; host: HTMLElement | null }
+  opts: { readOnly: boolean; host: HTMLElement | null; spacePan?: boolean }
 ) {
   const drawing = mode === "pen" || mode === "brush" || mode === "eraser";
   const connecting = mode === "connector" || mode === "arrow";
-  const isPan = mode === "pan";
+  const isPan = mode === "pan" || Boolean(opts.spacePan);
   const isShapePlace = mode === "shape-place";
-  const panning = isPan || (!drawing && !connecting && !isShapePlace);
+  const panning = isPan;
   graph.setPanning(panning);
   const connectable =
     !opts.readOnly && !drawing && !isPan && !isShapePlace && (connecting || mode === "select");
   graph.setConnectable(connectable);
   const ch = graph.getPlugin("ConnectionHandler") as { setEnabled?: (v: boolean) => void } | null;
-  ch?.setEnabled?.(connectable);
+  ch?.setEnabled?.(connectable && (connecting || mode === "select"));
 
   // Drawing tools must not select/move/rubberband
-  const interactive = !drawing && !isShapePlace && !opts.readOnly;
-  graph.setCellsMovable(interactive && !isPan);
-  graph.setCellsResizable(interactive && !isPan);
+  const interactive = !drawing && !isShapePlace && !opts.readOnly && !isPan;
+  graph.setCellsMovable(interactive);
+  graph.setCellsResizable(interactive);
   graph.setCellsEditable(interactive && mode === "select");
   const rb = graph.getPlugin("RubberBandHandler") as { setEnabled?: (v: boolean) => void } | null;
   rb?.setEnabled?.(interactive && mode === "select");
 
   if (opts.host) {
     if (drawing || isShapePlace) opts.host.style.cursor = "crosshair";
-    else if (isPan) opts.host.style.cursor = "grab";
+    else if (isPan) opts.host.style.cursor = opts.spacePan && mode !== "pan" ? "grab" : "grab";
     else if (connecting) opts.host.style.cursor = "crosshair";
     else opts.host.style.cursor = "";
   }
@@ -370,7 +424,7 @@ export type SelectionInfo = {
 
 export type DiagramCanvasHandle = {
   getGraph: () => Graph | null;
-  loadPage: (page: DiagramPage) => void;
+  loadPage: (page: DiagramPage, opts?: { fit?: boolean }) => void;
   serializePage: (meta: Pick<DiagramPage, "id" | "name">) => DiagramPage | null;
   addShape: (def: ShapeDef, at?: { x: number; y: number }) => void;
   /** Place shape at client (screen) coords — accounts for zoom/pan/scroll. */
@@ -403,6 +457,8 @@ export type DiagramCanvasHandle = {
   duplicate: () => void;
   nudge: (dx: number, dy: number) => void;
   setReadOnly: (ro: boolean) => void;
+  setSpacePanning: (on: boolean) => void;
+  fitToContent: () => void;
   runLayout: (kind: LayoutKindCanvas) => void;
   magicCleanup: () => void;
   insertTable: (
@@ -454,6 +510,7 @@ type Props = {
   onSelectionChange?: (info: SelectionInfo | null) => void;
   onZoomChange?: (zoom: number) => void;
   onShapePlaced?: () => void;
+  onGraphReady?: () => void;
   readOnly?: boolean;
 };
 
@@ -472,7 +529,16 @@ function resolveShapeDef(shapeName: string): ShapeDef {
 }
 
 export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function DiagramCanvas(
-  { className, settings, onDirty, onSelectionChange, onZoomChange, onShapePlaced, readOnly = false },
+  {
+    className,
+    settings,
+    onDirty,
+    onSelectionChange,
+    onZoomChange,
+    onShapePlaced,
+    onGraphReady,
+    readOnly = false,
+  },
   ref
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -534,6 +600,21 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   const flowOrigStylesRef = useRef<Map<string, CellStyle>>(new Map());
   const onDirtyRef = useRef(onDirty);
   onDirtyRef.current = onDirty;
+  const onZoomChangeRef = useRef(onZoomChange);
+  onZoomChangeRef.current = onZoomChange;
+  const onGraphReadyRef = useRef(onGraphReady);
+  onGraphReadyRef.current = onGraphReady;
+  const graphReadyRef = useRef(false);
+  const pendingPageRef = useRef<{ page: DiagramPage; fit?: boolean } | null>(null);
+  const spacePanRef = useRef(false);
+  const [tableEdit, setTableEdit] = useState<{
+    cellId: string;
+    row: number;
+    col: number;
+    value: string;
+  } | null>(null);
+  const [tableEditDraft, setTableEditDraft] = useState("");
+  const tableEditResolverRef = useRef<((value: string | null) => void) | null>(null);
 
   const emitSelection = useCallback(() => {
     const graph = graphRef.current;
@@ -592,6 +673,23 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     void root;
   }, []);
 
+  const applyLoadPage = useCallback(
+    (page: DiagramPage, fit = false) => {
+      const graph = graphRef.current;
+      if (!graph) {
+        pendingPageRef.current = { page, fit };
+        return;
+      }
+      dirtySkip.current = true;
+      toMaxGraph(graph, page);
+      dirtySkip.current = false;
+      if (fit) fitGraphToContent(graph, (z) => onZoomChangeRef.current?.(z));
+      syncPaperOverlay(graph, paperRef.current);
+      emitSelection();
+    },
+    [emitSelection]
+  );
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -611,7 +709,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     graph.setGridSize(settings?.gridSize ?? 10);
     graph.setTooltips(true);
     graph.setHtmlLabels(true);
-    graph.getView().setTranslate(40, 40);
+    graph.getView().setTranslate(VIEWPORT_OFFSET, VIEWPORT_OFFSET);
     graph.getView().setAllowEval(false);
 
     // Never show raw JSON payloads as labels (table/freehand/container)
@@ -656,6 +754,14 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     };
     graph.getDataModel().addListener(InternalEvent.UNDO, listener as never);
     graph.getView().addListener(InternalEvent.UNDO, listener as never);
+
+    graph.getView().addListener(InternalEvent.SCALE, () => {
+      syncPaperOverlay(graph, paperRef.current);
+      onZoomChangeRef.current?.(graph.getView().getScale());
+    });
+    graph.getView().addListener(InternalEvent.TRANSLATE, () => {
+      syncPaperOverlay(graph, paperRef.current);
+    });
 
     const refreshHover = () => {
       if (paletteDirRef.current) return;
@@ -716,7 +822,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           pendingShapeRef.current = null;
           toolModeRef.current = "select";
           setToolModeUi("select");
-          applyToolModeToGraph(graph, "select", { readOnly: readOnlyRef.current, host });
+          applyToolModeToGraph(graph, "select", { readOnly: readOnlyRef.current, host, spacePan: spacePanRef.current });
           onDirtyRef.current?.();
           onShapePlacedRef.current?.();
           evt.preventDefault?.();
@@ -900,23 +1006,31 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       if (!hit) return;
       const existing =
         parsed.table.cells.find((c) => c.r === hit.r && c.c === hit.c)?.text ?? "";
-      const next = window.prompt(`Edit cell (${hit.r + 1}, ${hit.c + 1})`, existing);
-      if (next == null) return;
-      const table = patchTableCellText(parsed.table, hit.r, hit.c, next);
-      const payload = JSON.stringify({
-        kind: "table",
-        label: parsed.label,
-        table,
-        container: parsed.container,
+      const cellId = cell.getId() || "";
+      void new Promise<string | null>((resolve) => {
+        tableEditResolverRef.current = resolve;
+        setTableEditDraft(existing);
+        setTableEdit({ cellId, row: hit.r, col: hit.c, value: existing });
+      }).then((next) => {
+        tableEditResolverRef.current = null;
+        if (next == null) return;
+        const table = patchTableCellText(parsed.table!, hit.r, hit.c, next);
+        const payload = JSON.stringify({
+          kind: "table",
+          label: parsed.label,
+          table,
+          container: parsed.container,
+        });
+        graph.getDataModel().beginUpdate();
+        try {
+          graph.getDataModel().setValue(cell, payload);
+        } finally {
+          graph.getDataModel().endUpdate();
+        }
+        onDirtyRef.current?.();
       });
-      graph.getDataModel().beginUpdate();
-      try {
-        graph.getDataModel().setValue(cell, payload);
-      } finally {
-        graph.getDataModel().endUpdate();
-      }
-      onDirtyRef.current?.();
       InternalEvent.consume(me);
+      return;
     };
     graph.addListener(InternalEvent.DOUBLE_CLICK, onDblClick as never);
 
@@ -931,8 +1045,18 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
 
     graphRef.current = graph;
     undoRef.current = undo;
+    graphReadyRef.current = true;
+    syncPaperOverlay(graph, paperRef.current);
+    if (pendingPageRef.current) {
+      const pending = pendingPageRef.current;
+      pendingPageRef.current = null;
+      applyLoadPage(pending.page, pending.fit);
+    }
+    onGraphReadyRef.current?.();
 
     return () => {
+      graphReadyRef.current = false;
+      pendingPageRef.current = null;
       host.removeEventListener("wheel", onWheel);
       graph.removeMouseListener(mouseListener as never);
       graph.removeListener(onDblClick as never);
@@ -949,6 +1073,19 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   }, []);
 
   useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const ro = new ResizeObserver(() => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      graph.sizeDidChange();
+      syncPaperOverlay(graph, paperRef.current);
+    });
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
     const graph = graphRef.current;
     if (!graph) return;
     graph.setGridEnabled(settings?.grid !== false);
@@ -961,6 +1098,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     applyToolModeToGraph(graph, toolModeRef.current, {
       readOnly,
       host: hostRef.current,
+      spacePan: spacePanRef.current,
     });
     if (paperRef.current) {
       const paper = settings?.paper ?? "a4-portrait";
@@ -1052,13 +1190,8 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
 
   useImperativeHandle(ref, () => ({
     getGraph: () => graphRef.current,
-    loadPage: (page) => {
-      const graph = graphRef.current;
-      if (!graph) return;
-      dirtySkip.current = true;
-      toMaxGraph(graph, page);
-      dirtySkip.current = false;
-      emitSelection();
+    loadPage: (page, opts) => {
+      applyLoadPage(page, opts?.fit ?? false);
     },
     serializePage: (meta) => {
       const graph = graphRef.current;
@@ -1343,12 +1476,34 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       onDirty?.();
     },
     setReadOnly: (ro) => {
+      readOnlyRef.current = ro;
       const graph = graphRef.current;
       if (!graph) return;
       graph.setConnectable(!ro);
       graph.setCellsEditable(!ro);
       graph.setCellsResizable(!ro);
       graph.setCellsMovable(!ro);
+      applyToolModeToGraph(graph, toolModeRef.current, {
+        readOnly: ro,
+        host: hostRef.current,
+        spacePan: spacePanRef.current,
+      });
+    },
+    setSpacePanning: (on) => {
+      spacePanRef.current = on;
+      const graph = graphRef.current;
+      if (!graph) return;
+      applyToolModeToGraph(graph, toolModeRef.current, {
+        readOnly: readOnlyRef.current,
+        host: hostRef.current,
+        spacePan: on,
+      });
+    },
+    fitToContent: () => {
+      const graph = graphRef.current;
+      if (!graph) return;
+      fitGraphToContent(graph, (z) => onZoomChangeRef.current?.(z));
+      syncPaperOverlay(graph, paperRef.current);
     },
     runLayout: (kind) => {
       const graph = graphRef.current;
@@ -1599,7 +1754,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       }
       const graph = graphRef.current;
       if (!graph) return;
-      applyToolModeToGraph(graph, mode, { readOnly: readOnlyRef.current, host: hostRef.current });
+      applyToolModeToGraph(graph, mode, { readOnly: readOnlyRef.current, host: hostRef.current, spacePan: spacePanRef.current });
       if (mode !== "select") {
         setPaletteDir(null);
       }
@@ -1969,7 +2124,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     >
       <div
         ref={paperRef}
-        className="pointer-events-none absolute left-10 top-10 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_8px_24px_rgba(0,0,0,0.08)]"
+        className="pointer-events-none absolute left-0 top-0 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_8px_24px_rgba(0,0,0,0.08)]"
         style={{
           width: size.w,
           height: size.h,
@@ -2125,6 +2280,60 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         .diagram-canvas-root .mxGraph { background: transparent !important; }
         .diagram-canvas-root svg { background: transparent; }
       `}</style>
+
+      <Dialog
+        open={tableEdit != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            tableEditResolverRef.current?.(null);
+            tableEditResolverRef.current = null;
+            setTableEdit(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Edit cell ({tableEdit ? tableEdit.row + 1 : 0}, {tableEdit ? tableEdit.col + 1 : 0})
+            </DialogTitle>
+          </DialogHeader>
+          <Input
+            value={tableEditDraft}
+            onChange={(e) => setTableEditDraft(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                tableEditResolverRef.current?.(tableEditDraft);
+                tableEditResolverRef.current = null;
+                setTableEdit(null);
+              }
+            }}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                tableEditResolverRef.current?.(null);
+                tableEditResolverRef.current = null;
+                setTableEdit(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                tableEditResolverRef.current?.(tableEditDraft);
+                tableEditResolverRef.current = null;
+                setTableEdit(null);
+              }}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });

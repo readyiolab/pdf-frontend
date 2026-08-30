@@ -60,7 +60,7 @@ export function useDiagramDocument(opts: {
         ? diagramQuery.error.message
         : "Failed to load diagram";
     setError(msg);
-    if (/not a member of this organization/i.test(msg)) setMembershipHint(true);
+    if (/not a member of this organization|do not have access to this organization/i.test(msg)) setMembershipHint(true);
   }, [diagramQuery.error]);
 
   // Create on /diagrams/new
@@ -87,7 +87,7 @@ export function useDiagramDocument(opts: {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : "Failed to create diagram";
         setError(msg);
-        if (/not a member of this organization/i.test(msg)) setMembershipHint(true);
+        if (/not a member of this organization|do not have access to this organization/i.test(msg)) setMembershipHint(true);
       } finally {
         if (!cancelled) setBootstrappingNew(false);
       }
@@ -119,7 +119,7 @@ export function useDiagramDocument(opts: {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Retry failed";
       setError(msg);
-      if (/not a member of this organization/i.test(msg)) setMembershipHint(true);
+      if (/not a member of this organization|do not have access to this organization/i.test(msg)) setMembershipHint(true);
     }
   }, [diagramQuery, isNew, routeId, userId]);
 

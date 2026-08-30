@@ -32,7 +32,9 @@ export function clearDiagramOrgId() {
 
 function isMembershipError(err: unknown): boolean {
   if (!(err instanceof ApiError) || err.status !== 403) return false;
-  return /not a member of this organization/i.test(err.message);
+  return /not a member of this organization|do not have access to this organization/i.test(
+    err.message
+  );
 }
 
 /** @deprecated Use ensureOrg from @/features/org */
@@ -102,12 +104,23 @@ export type ExplainStep = {
   nodeIds: string[];
 };
 
+export type DiagramPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
 export const diagramsApi = {
-  list(organizationId: string, folderId?: string | null) {
-    const q = folderId ? `?folderId=${encodeURIComponent(folderId)}` : "";
+  list(organizationId: string, folderId?: string | null, page = 1, limit = 50) {
+    const params = new URLSearchParams();
+    if (folderId) params.set("folderId", folderId);
+    if (page !== 1) params.set("page", String(page));
+    if (limit !== 50) params.set("limit", String(limit));
+    const q = params.toString() ? `?${params.toString()}` : "";
     return apiFetch(`/diagrams${q}`, {
       headers: orgHeaders(organizationId),
-    }) as Promise<{ diagrams: DiagramRow[] }>;
+    }) as Promise<{ diagrams: DiagramRow[]; pagination: DiagramPagination }>;
   },
 
   get(organizationId: string, id: string) {

@@ -93,12 +93,21 @@ function patchMaxGraphEval(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), pdfjsAssets(), patchMaxGraphEval()],
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
   build: {
+    sourcemap: false,
     // The pdf chunk is deliberately large: the PDF.js worker is base64-inlined
     // into it (see lib/pdf.ts) so no host can mis-serve a separate .mjs worker.
     // It is lazy-loaded (only on a PDF/signing view) and cached, so this is a

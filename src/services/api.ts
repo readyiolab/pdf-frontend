@@ -43,7 +43,33 @@ class ApiError extends Error {
 export type ApiFetchOptions = RequestInit & {
   /** Override default 15s abort timeout (ms). */
   timeoutMs?: number;
+  /** Internal: skip refresh retry to avoid infinite loops. */
+  _retried?: boolean;
 };
+
+let refreshInFlight: Promise<boolean> | null = null;
+let loggingOut = false;
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    })
+      .then((r) => r.ok)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+function redirectToLogin() {
+  if (loggingOut) return;
+  loggingOut = true;
+  localStorage.removeItem("saas_jwt_token");
+  window.location.href = "/login";
+}
 
 async function fetchWithRetry(
   url: string,
@@ -99,13 +125,9 @@ async function fetchWithRetry(
  * reimplementing it.
  */
 export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
-  const { timeoutMs = 15000, ...fetchOptions } = options;
-  const token = localStorage.getItem("saas_jwt_token");
-  
+  const { timeoutMs = 15000, _retried = false, ...fetchOptions } = options;
+
   const headers = new Headers(fetchOptions.headers);
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
   if (!headers.has("Content-Type") && !(fetchOptions.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
@@ -115,6 +137,7 @@ export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) 
     {
       ...fetchOptions,
       headers,
+      credentials: "include",
     },
     3,
     timeoutMs
@@ -123,10 +146,14 @@ export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    // Handle token expiration
-    if (response.status === 401 && token) {
-      localStorage.removeItem("saas_jwt_token");
-      window.location.href = "/login";
+    if (response.status === 401 && !_retried && endpoint !== "/auth/refresh") {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        return apiFetch(endpoint, { ...options, _retried: true });
+      }
+      redirectToLogin();
+    } else if (response.status === 401) {
+      redirectToLogin();
     }
     // The API returns { status, message, errors? }. Prefer the server message,
     // then the first validation error, then a generic fallback.
@@ -150,24 +177,26 @@ export const apiService = {
     apiFetch("/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, name, password, attribution: getStoredAttribution() }),
-    }),
+    }) as Promise<{ user: User }>,
 
   login: (email: string, password: string) =>
     apiFetch("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password, attribution: getStoredAttribution() }),
-    }),
+    }) as Promise<{ user: User }>,
 
   googleLogin: (data: { credential: string }) =>
     apiFetch("/auth/google", {
       method: "POST",
       body: JSON.stringify({ ...data, attribution: getStoredAttribution() }),
-    }),
+    }) as Promise<{ user: User }>,
 
   logout: () => apiFetch("/auth/logout", { method: "POST" }),
 
   verifyEmail: (token: string) =>
-    apiFetch("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) }),
+    apiFetch("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) }) as Promise<{
+      user: User;
+    }>,
 
   resendVerification: () =>
     apiFetch("/auth/resend-verification", { method: "POST" }),

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { apiService, API_BASE_URL } from "@/services/api";
 import type { Job } from "@/services/api";
 import type { ProcessingStep } from "@/lib/design-tokens";
@@ -53,6 +53,8 @@ export function useJobProcessor(): UseJobProcessorResult {
       esRef.current = null;
     }
   }, []);
+
+  useEffect(() => () => cleanup(), [cleanup]);
 
   const reset = useCallback(() => {
     cleanup();
@@ -124,10 +126,9 @@ export function useJobProcessor(): UseJobProcessorResult {
           }, POLL_INTERVAL_MS);
         };
 
-        const token = localStorage.getItem("saas_jwt_token");
-        if (token && typeof EventSource !== "undefined") {
-          const url = `${API_BASE_URL}/jobs/${jobId}/stream?token=${encodeURIComponent(token)}`;
-          const es = new EventSource(url);
+        if (typeof EventSource !== "undefined") {
+          const url = `${API_BASE_URL}/jobs/${jobId}/stream`;
+          const es = new EventSource(url, { withCredentials: true });
           esRef.current = es;
 
           const onTick = (e: MessageEvent) => {

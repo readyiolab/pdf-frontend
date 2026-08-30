@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import {
   ImagePlus,
   Plus,
@@ -435,7 +436,11 @@ export function AiChatPanel({
                         {m.previewSvg ? (
                           <div
                             className="h-full w-full [&_svg]:h-full [&_svg]:w-full"
-                            dangerouslySetInnerHTML={{ __html: m.previewSvg }}
+                            dangerouslySetInnerHTML={{
+                              __html: DOMPurify.sanitize(m.previewSvg, {
+                                USE_PROFILES: { svg: true, svgFilters: true },
+                              }),
+                            }}
                           />
                         ) : (
                           <span className="text-[11px] text-[#64748b]">

@@ -26,6 +26,7 @@ export function useSyncDiagramTools(canvasRef: RefObject<DiagramCanvasHandle | n
     }
     canvasRef.current?.setToolMode(mode);
     canvasRef.current?.setPendingShape(tools.pendingShape);
+    canvasRef.current?.setSpacePanning(tools.spacePanDown);
     if (tool === "pen" || tool === "pencil") {
       canvasRef.current?.setPenStyle({ ...tools.pen, brush: "pen" });
     } else if (tool === "brush" || tool === "marker") {
@@ -40,6 +41,7 @@ export function useSyncDiagramTools(canvasRef: RefObject<DiagramCanvasHandle | n
     tools.brush,
     tools.eraser,
     tools.pendingShape,
+    tools.spacePanDown,
   ]);
 
   useEffect(() => {

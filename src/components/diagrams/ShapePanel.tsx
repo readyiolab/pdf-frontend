@@ -74,11 +74,11 @@ function ShapeThumb({ preview }: { preview: ShapeDef["preview"] }) {
 }
 
 type Props = {
-  onAddShape: (shape: ShapeDef) => void;
+  onPickShape: (shape: ShapeDef) => void;
   className?: string;
 };
 
-export function ShapePanel({ onAddShape, className }: Props) {
+export function ShapePanel({ onPickShape, className }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({ general: true, flowchart: true });
   const [enabled, setEnabled] = useState<Set<string>>(new Set(DEFAULT_CATEGORY_IDS));
@@ -138,7 +138,7 @@ export function ShapePanel({ onAddShape, className }: Props) {
                         e.dataTransfer.setData("application/x-diagram-shape", JSON.stringify(shape));
                         e.dataTransfer.effectAllowed = "copy";
                       }}
-                      onClick={() => onAddShape(shape)}
+                      onClick={() => onPickShape(shape)}
                       className="flex flex-col items-center gap-0.5 rounded border border-transparent p-1 hover:border-[#93c5fd] hover:bg-white"
                     >
                       <svg viewBox="0 0 36 36" className="size-9">
