@@ -48,7 +48,6 @@ export type ApiFetchOptions = RequestInit & {
 };
 
 let refreshInFlight: Promise<boolean> | null = null;
-let loggingOut = false;
 
 async function tryRefreshSession(): Promise<boolean> {
   if (!refreshInFlight) {
@@ -57,18 +56,12 @@ async function tryRefreshSession(): Promise<boolean> {
       credentials: "include",
     })
       .then((r) => r.ok)
+      .catch(() => false)
       .finally(() => {
         refreshInFlight = null;
       });
   }
   return refreshInFlight;
-}
-
-function redirectToLogin() {
-  if (loggingOut) return;
-  loggingOut = true;
-  localStorage.removeItem("saas_jwt_token");
-  window.location.href = "/login";
 }
 
 async function fetchWithRetry(
@@ -119,10 +112,8 @@ async function fetchWithRetry(
 }
 
 /**
- * Shared fetch wrapper: attaches the JWT, retries transient network/timeout
- * failures, and redirects to login on a 401. Exported so feature-specific API
- * modules (see services/signingApi.ts) reuse this behaviour instead of
- * reimplementing it.
+ * Shared fetch wrapper: attaches credentials, attempts token refresh on 401,
+ * and emits auth:unauthorized event on unrecoverable 401s for active sessions.
  */
 export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) {
   const { timeoutMs = 15000, _retried = false, ...fetchOptions } = options;
@@ -151,10 +142,15 @@ export async function apiFetch(endpoint: string, options: ApiFetchOptions = {}) 
       if (refreshed) {
         return apiFetch(endpoint, { ...options, _retried: true });
       }
-      redirectToLogin();
-    } else if (response.status === 401) {
-      redirectToLogin();
     }
+
+    if (response.status === 401) {
+      localStorage.removeItem("saas_jwt_token");
+      if (endpoint !== "/users/me" && endpoint !== "/auth/refresh") {
+        window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+      }
+    }
+
     // The API returns { status, message, errors? }. Prefer the server message,
     // then the first validation error, then a generic fallback.
     const validationMsg = Array.isArray(data.errors) && data.errors.length

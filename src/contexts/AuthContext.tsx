@@ -49,6 +49,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      clearClientSessionStorage();
+      queryClient.clear();
+      clearOrgId();
+    };
+
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("auth:unauthorized", handleUnauthorized);
+    };
+  }, [queryClient]);
+
   const applySession = useCallback((data: { user: User }) => {
     setUser({
       ...data.user,
