@@ -27,7 +27,6 @@ import {
   type Cell,
   type CellStyle,
   type CellState,
-  type FitPlugin,
 } from "@maxgraph/core";
 import "@maxgraph/core/css/common.css";
 import {
@@ -114,33 +113,61 @@ const CARDINAL_CONSTRAINTS = [
   new ConnectionConstraint(new Point(0, 0.5), true, "W"),
 ];
 
-const VIEWPORT_OFFSET = 40;
+const PAGE_MARGIN = 40;
 
-function fitGraphToContent(graph: Graph, onZoom?: (z: number) => void) {
-  const fitPlugin = graph.getPlugin("fit") as FitPlugin | null;
-  if (fitPlugin?.fit) {
-    const scale = fitPlugin.fit({ margin: 32 });
-    const capped = Math.min(scale, 1);
-    if (capped !== scale) graph.getView().setScale(capped);
-    onZoom?.(capped);
+function getPaperSize(settings?: DiagramSettings) {
+  const paper = settings?.paper ?? "a4-portrait";
+  if (paper === "custom") {
+    return {
+      w: settings?.pageWidth ?? PAPER_SIZES["a4-portrait"].w,
+      h: settings?.pageHeight ?? PAPER_SIZES["a4-portrait"].h,
+    };
+  }
+  return PAPER_SIZES[paper as keyof typeof PAPER_SIZES] ?? PAPER_SIZES["a4-portrait"];
+}
+
+/** Place the white page in the middle of the gray workspace (draw.io-style). */
+function centerPageInViewport(graph: Graph, settings?: DiagramSettings) {
+  const container = graph.container;
+  const cw = container?.clientWidth ?? 0;
+  const ch = container?.clientHeight ?? 0;
+  if (cw <= 0 || ch <= 0) return;
+  const scale = graph.getView().getScale() || 1;
+  if (settings?.pageView === false) {
+    graph.getView().setTranslate(PAGE_MARGIN / scale, PAGE_MARGIN / scale);
     return;
   }
-  const bounds = graph.getGraphBounds();
-  if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-    graph.getView().setTranslate(VIEWPORT_OFFSET, VIEWPORT_OFFSET);
-    graph.getView().setScale(1);
-    onZoom?.(1);
-    return;
-  }
+  const paper = getPaperSize(settings);
+  const paperW = paper.w * scale;
+  const paperH = paper.h * scale;
+  const tx = (cw - paperW) / 2 / scale;
+  const ty = paperH + PAGE_MARGIN * 2 < ch ? (ch - paperH) / 2 / scale : PAGE_MARGIN / scale;
+  graph.getView().setTranslate(tx, ty);
+}
+
+function fitGraphToContent(graph: Graph, settings?: DiagramSettings, onZoom?: (z: number) => void) {
   const container = graph.container;
   const cw = container?.clientWidth ?? 800;
   const ch = container?.clientHeight ?? 600;
   const pad = 48;
-  const scale = Math.min(
-    1,
-    (cw - pad) / bounds.width,
-    (ch - pad) / bounds.height
-  );
+
+  if (settings?.pageView !== false) {
+    const paper = getPaperSize(settings);
+    const scale = Math.min(1, (cw - pad) / paper.w, (ch - pad) / paper.h);
+    graph.getView().setScale(Number.isFinite(scale) && scale > 0 ? scale : 1);
+    centerPageInViewport(graph, settings);
+    onZoom?.(graph.getView().getScale());
+    return;
+  }
+
+  const bounds = graph.getGraphBounds();
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+    graph.getView().setScale(1);
+    centerPageInViewport(graph, settings);
+    onZoom?.(1);
+    return;
+  }
+  const scale = Math.min(1, (cw - pad) / bounds.width, (ch - pad) / bounds.height);
   graph.getView().setScale(scale);
   const cx = bounds.x + bounds.width / 2;
   const cy = bounds.y + bounds.height / 2;
@@ -365,8 +392,13 @@ function edgeStyleKey(kind: DefaultEdgeStyle["edgeStyle"]): string {
   return "orthogonalEdgeStyle";
 }
 
-function applyDefaultEdgeStyle(graph: Graph, preset: DefaultEdgeStyle) {
-  const style = {
+/**
+ * Explicit style for a new edge. maxGraph inserts connector edges with an empty
+ * style and only merges the stylesheet at render time, so the routing has to be
+ * written onto the cell or serialization cannot tell it apart from straight.
+ */
+function buildEdgeCellStyle(preset: DefaultEdgeStyle): CellStyle {
+  return {
     edgeStyle: edgeStyleKey(preset.edgeStyle),
     endArrow: preset.endArrow === "none" ? undefined : preset.endArrow,
     startArrow: preset.startArrow === "none" ? undefined : preset.startArrow,
@@ -375,8 +407,11 @@ function applyDefaultEdgeStyle(graph: Graph, preset: DefaultEdgeStyle) {
     rounded: preset.edgeStyle !== "straight",
     curved: preset.curved,
   } as CellStyle;
+}
+
+function applyDefaultEdgeStyle(graph: Graph, preset: DefaultEdgeStyle) {
   try {
-    graph.getStylesheet().putDefaultEdgeStyle(style);
+    graph.getStylesheet().putDefaultEdgeStyle(buildEdgeCellStyle(preset));
   } catch {
     /* ignore */
   }
@@ -607,6 +642,8 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
   const graphReadyRef = useRef(false);
   const pendingPageRef = useRef<{ page: DiagramPage; fit?: boolean } | null>(null);
   const spacePanRef = useRef(false);
+  const lastContainerSizeRef = useRef({ w: 0, h: 0 });
+  const lastPaperLayoutRef = useRef("");
   const [tableEdit, setTableEdit] = useState<{
     cellId: string;
     row: number;
@@ -683,7 +720,19 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       dirtySkip.current = true;
       toMaxGraph(graph, page);
       dirtySkip.current = false;
-      if (fit) fitGraphToContent(graph, (z) => onZoomChangeRef.current?.(z));
+      if (fit && settingsRef.current?.pageView === false) {
+        fitGraphToContent(graph, settingsRef.current, (z) => onZoomChangeRef.current?.(z));
+      } else {
+        const settings = settingsRef.current;
+        if (fit && settings?.pageView !== false) {
+          const paper = getPaperSize(settings);
+          const cw = graph.container?.clientWidth ?? 800;
+          const scale = Math.min(1, Math.max(0.15, (cw - 80) / paper.w));
+          graph.getView().setScale(scale);
+          onZoomChangeRef.current?.(scale);
+        }
+        centerPageInViewport(graph, settings);
+      }
       syncPaperOverlay(graph, paperRef.current);
       emitSelection();
     },
@@ -709,7 +758,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     graph.setGridSize(settings?.gridSize ?? 10);
     graph.setTooltips(true);
     graph.setHtmlLabels(true);
-    graph.getView().setTranslate(VIEWPORT_OFFSET, VIEWPORT_OFFSET);
+    centerPageInViewport(graph, settingsRef.current);
     graph.getView().setAllowEval(false);
 
     // Never show raw JSON payloads as labels (table/freehand/container)
@@ -1043,6 +1092,48 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     };
     host.addEventListener("wheel", onWheel, { passive: false });
 
+    applyDefaultEdgeStyle(graph, defaultEdgeStyleRef.current);
+
+    // Connector drags insert an edge with an empty style, which would serialize
+    // as "straight". Merge the active connector preset onto the new cell.
+    const connectionHandler = graph.getPlugin("ConnectionHandler") as {
+      insertEdge?: (
+        parent: Cell,
+        id: string,
+        value: unknown,
+        source: Cell | null,
+        target: Cell | null,
+        style: CellStyle
+      ) => Cell;
+    } | null;
+    if (connectionHandler?.insertEdge) {
+      const baseInsertEdge = connectionHandler.insertEdge.bind(connectionHandler);
+      connectionHandler.insertEdge = (parent, id, value, source, target, style) =>
+        baseInsertEdge(parent, id, value, source, target, {
+          ...buildEdgeCellStyle(defaultEdgeStyleRef.current),
+          ...(style ?? {}),
+        });
+    }
+
+    // Safety net for any other insertion path that skips the handler above.
+    graph.addListener(InternalEvent.CELLS_ADDED, ((
+      _sender: unknown,
+      evt: { getProperty: (k: string) => unknown }
+    ) => {
+      const cells = (evt.getProperty("cells") as Cell[] | undefined) ?? [];
+      const missing = cells.filter((c) => c.isEdge() && !(c.getStyle() ?? {}).edgeStyle);
+      if (!missing.length) return;
+      const preset = buildEdgeCellStyle(defaultEdgeStyleRef.current);
+      graph.getDataModel().beginUpdate();
+      try {
+        for (const cell of missing) {
+          graph.getDataModel().setStyle(cell, { ...preset, ...(cell.getStyle() ?? {}) });
+        }
+      } finally {
+        graph.getDataModel().endUpdate();
+      }
+    }) as never);
+
     graphRef.current = graph;
     undoRef.current = undo;
     graphReadyRef.current = true;
@@ -1078,6 +1169,17 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     const ro = new ResizeObserver(() => {
       const graph = graphRef.current;
       if (!graph) return;
+      const cw = root.clientWidth;
+      const ch = root.clientHeight;
+      const prev = lastContainerSizeRef.current;
+      if (prev.w > 0 && prev.h > 0) {
+        const scale = graph.getView().getScale() || 1;
+        const tr = graph.getView().getTranslate();
+        graph.getView().setTranslate(tr.x + (cw - prev.w) / 2 / scale, tr.y + (ch - prev.h) / 2 / scale);
+      } else {
+        centerPageInViewport(graph, settingsRef.current);
+      }
+      lastContainerSizeRef.current = { w: cw, h: ch };
       graph.sizeDidChange();
       syncPaperOverlay(graph, paperRef.current);
     });
@@ -1101,19 +1203,18 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       spacePan: spacePanRef.current,
     });
     if (paperRef.current) {
-      const paper = settings?.paper ?? "a4-portrait";
-      const size =
-        paper === "custom"
-          ? {
-              w: settings?.pageWidth ?? PAPER_SIZES["a4-portrait"].w,
-              h: settings?.pageHeight ?? PAPER_SIZES["a4-portrait"].h,
-            }
-          : PAPER_SIZES[paper as keyof typeof PAPER_SIZES] ?? PAPER_SIZES["a4-portrait"];
+      const size = getPaperSize(settings);
       paperRef.current.style.width = `${size.w}px`;
       paperRef.current.style.height = `${size.h}px`;
       paperRef.current.style.background = settings?.background ?? "#ffffff";
       paperRef.current.style.display = settings?.pageView === false ? "none" : "block";
     }
+    const layoutKey = `${settings?.paper ?? "a4-portrait"}|${settings?.pageView !== false}|${settings?.pageWidth ?? ""}|${settings?.pageHeight ?? ""}`;
+    if (lastPaperLayoutRef.current !== layoutKey) {
+      lastPaperLayoutRef.current = layoutKey;
+      centerPageInViewport(graph, settings);
+    }
+    syncPaperOverlay(graph, paperRef.current);
     if (settings?.connectionArrows === false) {
       setHoverUi(null);
       setPaletteDir(null);
@@ -1166,11 +1267,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           source,
           target,
           style: {
-            edgeStyle: "orthogonalEdgeStyle",
-            endArrow: "classic",
-            strokeColor: "#64748b",
-            strokeWidth: 1.5,
-            rounded: true,
+            ...buildEdgeCellStyle(defaultEdgeStyleRef.current),
             exitX: meta.exitX,
             exitY: meta.exitY,
             entryX: meta.entryX,
@@ -1502,7 +1599,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     fitToContent: () => {
       const graph = graphRef.current;
       if (!graph) return;
-      fitGraphToContent(graph, (z) => onZoomChangeRef.current?.(z));
+      fitGraphToContent(graph, settingsRef.current, (z) => onZoomChangeRef.current?.(z));
       syncPaperOverlay(graph, paperRef.current);
     },
     runLayout: (kind) => {

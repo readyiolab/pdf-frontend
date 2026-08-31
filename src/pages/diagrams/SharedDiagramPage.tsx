@@ -134,12 +134,6 @@ function SharedDiagramInner() {
     }
   }, [token, role, saving, title, syncActivePageFromCanvas]);
 
-  useEffect(() => {
-    if (!dirty || role !== "EDIT" || saving || !token) return;
-    const t = setTimeout(() => void save(), 3000);
-    return () => clearTimeout(t);
-  }, [dirty, role, saving, token, save]);
-
   const doExport = async (kind: "png" | "svg" | "pdf") => {
     const graph = canvasRef.current?.getGraph();
     if (!graph) return;

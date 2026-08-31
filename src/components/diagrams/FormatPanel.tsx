@@ -25,6 +25,20 @@ type Props = {
   className?: string;
 };
 
+type ConnectorRouting = "orthogonal" | "straight" | "elbow" | "curved";
+
+/**
+ * An edge with no edgeStyle inherits the orthogonal stylesheet default, so it
+ * must not read as straight (and never as an empty Select value).
+ */
+function connectorRouting(style: Partial<CellStyle>): ConnectorRouting {
+  if (style.curved) return "curved";
+  const kind = String(style.edgeStyle ?? "");
+  if (kind === "none") return "straight";
+  if (kind.includes("elbow")) return "elbow";
+  return "orthogonal";
+}
+
 export function FormatPanel({
   settings,
   onSettingsChange,
@@ -338,15 +352,7 @@ export function FormatPanel({
                   </div>
                   <Field label="Connector">
                     <Select
-                      value={
-                        style.curved
-                          ? "curved"
-                          : String(style.edgeStyle || "").includes("orthogonal")
-                            ? "orthogonal"
-                            : String(style.edgeStyle || "").includes("elbow")
-                              ? "elbow"
-                              : "straight"
-                      }
+                      value={connectorRouting(style)}
                       onValueChange={(v) =>
                         onApplyStyle({
                           edgeStyle:

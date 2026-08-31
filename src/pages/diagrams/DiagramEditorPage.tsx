@@ -231,14 +231,6 @@ function DiagramEditorInner() {
     }
   }, [orgId, diagramId, saving, syncActivePageFromCanvas, title, user?.id]);
 
-  useEffect(() => {
-    if (!dirty || !orgId || !diagramId || saving) return;
-    const t = setTimeout(() => {
-      void save();
-    }, 3000);
-    return () => clearTimeout(t);
-  }, [dirty, orgId, diagramId, saving, save]);
-
   // Ctrl+S and shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

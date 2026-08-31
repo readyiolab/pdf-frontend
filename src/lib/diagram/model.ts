@@ -703,9 +703,11 @@ function edgeToDiagramEdge(cell: Cell): DiagramEdge | null {
   const target = cell.getTerminal(false);
   if (!source || !target) return null;
   const style = cell.getStyle() ?? {};
+  // An absent edgeStyle means the cell inherits the stylesheet default, which is
+  // orthogonal. Only an explicit "none" is straight.
   let edgeStyle: EdgeStyle["edgeStyle"] = "orthogonal";
   const es = String(style.edgeStyle ?? "");
-  if (es === "none" || !es) edgeStyle = "straight";
+  if (es === "none") edgeStyle = "straight";
   else if (es.includes("entityRelation")) edgeStyle = "entityRelation";
   else if (es.includes("elbow")) edgeStyle = "elbow";
   const geo = cell.getGeometry();
