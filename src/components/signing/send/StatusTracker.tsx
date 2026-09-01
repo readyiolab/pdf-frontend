@@ -6,6 +6,7 @@ import {
   Download,
   Eye,
   FileCheck,
+  FileText,
   History,
   Mail,
   RotateCw,
@@ -60,7 +61,7 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
   const [status, setStatus] = useState<DocumentStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [resending, setResending] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState<"doc" | "cert" | null>(null);
+  const [downloading, setDownloading] = useState<"doc" | "cert" | "source" | null>(null);
   const [showActivity, setShowActivity] = useState(false);
   const [isVoiding, setIsVoiding] = useState(false);
 
@@ -111,14 +112,15 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
     }
   };
 
-  const handleDownload = async (kind: "doc" | "cert") => {
+  const handleDownload = async (kind: "doc" | "cert" | "source") => {
     setDownloading(kind);
     try {
       const { url } =
         kind === "doc"
           ? await signingApi.getDownloadUrl(documentId)
-          : await signingApi.getCertificateUrl(documentId);
-      // Open in a new tab; the URL is a short-lived signed download.
+          : kind === "cert"
+            ? await signingApi.getCertificateUrl(documentId)
+            : await signingApi.getSourceDownloadUrl(documentId);
       window.open(url, "_blank", "noopener");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't get the download link.");
@@ -270,6 +272,17 @@ export function StatusTracker({ documentId }: StatusTrackerProps) {
               {downloading === "cert" ? <Spinner className="size-4" /> : <ShieldCheck />}
               Certificate
             </Button>
+            {status?.sourceFileName && (
+              <Button
+                variant="outline"
+                onClick={() => handleDownload("source")}
+                disabled={downloading !== null}
+                className="flex-1"
+              >
+                {downloading === "source" ? <Spinner className="size-4" /> : <FileText />}
+                Original Word
+              </Button>
+            )}
           </div>
           {signedVersion && (
             <div className="rounded-lg bg-muted/50 p-2.5 text-[11px] leading-relaxed text-muted-foreground">

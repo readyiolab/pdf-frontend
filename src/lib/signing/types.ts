@@ -13,6 +13,8 @@
  */
 
 export type SignDocumentStatus =
+  | "CONVERTING"
+  | "CONVERSION_FAILED"
   | "DRAFT"
   | "SENT"
   | "FINALIZING"
@@ -132,8 +134,12 @@ export interface SignDocument {
   fileSize: number;
   pageCount: number;
   currentVersion: number;
-  /** SHA-256 of the original upload, taken before any modification. */
+  /** SHA-256 of the PDF signers see, taken before any modification. */
   originalHash: string | null;
+  /** Original .docx upload key; null for PDF-only uploads. */
+  sourceFileKey?: string | null;
+  /** Original .docx filename when sourceFileKey is set. */
+  sourceFileName?: string | null;
   expiresAt: string | null;
   sentAt: string | null;
   completedAt: string | null;
@@ -194,6 +200,23 @@ export const DEFAULT_FIELD_SIZE: Record<SignFieldType, { width: number; height: 
   STAMP: { width: 0.14, height: 0.07 },
   IMAGE: { width: 0.18, height: 0.09 },
 };
+
+export const SIGNING_PDF_MIME = "application/pdf" as const;
+export const SIGNING_DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
+
+export function isSigningDocxFile(file: File): boolean {
+  if (file.type === SIGNING_DOCX_MIME) return true;
+  return /\.docx$/i.test(file.name);
+}
+
+export function isSigningPdfFile(file: File): boolean {
+  if (file.type === SIGNING_PDF_MIME) return true;
+  return /\.pdf$/i.test(file.name);
+}
+
+export const SIGNING_UPLOAD_ACCEPT =
+  ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export const SIGNING_LIMITS = {
   maxRecipientsPerDocument: 50,

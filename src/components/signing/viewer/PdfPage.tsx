@@ -43,6 +43,7 @@ function PdfPageImpl({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
   const [isRendered, setIsRendered] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   // Rotation is applied by PDF.js itself (not a CSS transform), so a rotated
   // page swaps width/height in the layout box rather than overflowing it.
@@ -53,11 +54,13 @@ function PdfPageImpl({
   useEffect(() => {
     if (!isVisible) {
       setIsRendered(false);
+      setRenderError(null);
       return;
     }
 
     let cancelled = false;
     let renderTask: RenderTask | null = null;
+    setRenderError(null);
 
     (async () => {
       try {
@@ -79,14 +82,13 @@ function PdfPageImpl({
           const textContent = await page.getTextContent();
           if (cancelled) return;
           const viewport = page.getViewport({ scale, rotation });
-          // Pass undefined here — search highlighting is applied in a separate
-          // effect so typing in search doesn't cancel/re-render the canvas.
           renderTextLayer(textLayer, textContent, viewport, undefined);
           applySearchHighlight(textLayer, searchTerm);
         }
       } catch (err) {
         if (!cancelled && (err as Error)?.name !== "RenderingCancelledException") {
           console.error(`Failed to render page ${pageNumber}`, err);
+          setRenderError("This page couldn't be rendered.");
         }
       }
     })();
@@ -136,8 +138,14 @@ function PdfPageImpl({
         </div>
       )}
 
-      {!isRendered && isVisible && (
+      {!isRendered && isVisible && !renderError && (
         <div className="absolute inset-0 animate-shimmer bg-muted/40" aria-hidden="true" />
+      )}
+
+      {renderError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/60 p-4 text-center">
+          <p className="text-sm text-destructive">{renderError}</p>
+        </div>
       )}
 
       {overlay && <div className="absolute inset-0">{overlay}</div>}

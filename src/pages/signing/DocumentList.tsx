@@ -24,22 +24,26 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { loadPdfDocument } from "@/lib/pdf";
 import { signingApi, type SignTemplateSummary, type SigningStats } from "@/services/signingApi";
-import { SIGNING_LIMITS, type SignDocumentStatus, type SignDocumentSummary } from "@/lib/signing/types";
+import { SIGNING_LIMITS, SIGNING_UPLOAD_ACCEPT, isSigningDocxFile, isSigningPdfFile, type SignDocumentStatus, type SignDocumentSummary } from "@/lib/signing/types";
 import { ESignHowItWorks } from "@/components/signing/ESignHowItWorks";
 import { useAuth } from "@/contexts/AuthContext";
 
 const STATUS_TABS: { value: SignDocumentStatus | "ALL"; label: string }[] = [
   { value: "ALL", label: "All" },
+  { value: "CONVERTING", label: "Converting" },
   { value: "DRAFT", label: "Draft" },
   { value: "SENT", label: "Waiting" },
   { value: "FINALIZING", label: "Sealing" },
   { value: "COMPLETED", label: "Completed" },
+  { value: "CONVERSION_FAILED", label: "Failed" },
   { value: "DECLINED", label: "Declined" },
   { value: "EXPIRED", label: "Expired" },
   { value: "VOIDED", label: "Cancelled" },
 ];
 
 const STATUS_LABEL: Record<SignDocumentStatus, string> = {
+  CONVERTING: "Converting Word to PDF",
+  CONVERSION_FAILED: "Conversion failed",
   DRAFT: "Draft",
   SENT: "Waiting for signatures",
   FINALIZING: "Sealing signed PDF",
@@ -50,6 +54,8 @@ const STATUS_LABEL: Record<SignDocumentStatus, string> = {
 };
 
 const STATUS_STYLE: Record<SignDocumentStatus, { className: string; icon: typeof Clock }> = {
+  CONVERTING: { className: "bg-sky-500/10 text-sky-600 dark:text-sky-400", icon: Clock },
+  CONVERSION_FAILED: { className: "bg-destructive/10 text-destructive", icon: AlertTriangle },
   DRAFT: { className: "bg-muted text-muted-foreground", icon: FileText },
   SENT: { className: "bg-blue-500/10 text-blue-600 dark:text-blue-400", icon: Send },
   FINALIZING: { className: "bg-sky-500/10 text-sky-600 dark:text-sky-400", icon: Clock },
@@ -136,8 +142,10 @@ export default function DocumentList() {
   }, [load, search, mainTab, page]);
 
   const handleUpload = async (file: File, mode: "normal" | "self") => {
-    if (file.type !== "application/pdf") {
-      toast.error("Only PDF files can be sent for signature.");
+    const isDocx = isSigningDocxFile(file);
+    const isPdf = isSigningPdfFile(file);
+    if (!isPdf && !isDocx) {
+      toast.error("Only PDF and Word (.docx) files can be sent for signature.");
       return;
     }
     if (file.size > SIGNING_LIMITS.maxFileSize) {
@@ -154,20 +162,27 @@ export default function DocumentList() {
 
     try {
       let pageCount = 0;
-      try {
-        const pdf = await loadPdfDocument(await file.arrayBuffer());
-        pageCount = pdf.numPages;
-        pdf.destroy();
-      } catch (err) {
-        toast.error(
-          (err as Error)?.name === "PasswordException"
-            ? "This PDF is password protected. Remove the password before sending it for signature."
-            : "This file couldn't be read as a PDF."
-        );
-        return;
+      if (isPdf) {
+        try {
+          const pdf = await loadPdfDocument(await file.arrayBuffer());
+          pageCount = pdf.numPages;
+          pdf.destroy();
+        } catch (err) {
+          toast.error(
+            (err as Error)?.name === "PasswordException"
+              ? "This PDF is password protected. Remove the password before sending it for signature."
+              : "This file couldn't be read as a PDF."
+          );
+          return;
+        }
       }
 
-      const doc = await signingApi.uploadDocument(file, pageCount, setUploadProgress);
+      let doc = await signingApi.uploadDocument(file, pageCount, setUploadProgress);
+
+      if (doc.status === "CONVERTING") {
+        toast.info("Converting Word to PDF…");
+        doc = await signingApi.waitForDocumentReady(doc.id);
+      }
 
       if (mode === "self" && user) {
         await signingApi.addRecipient(doc.id, {
@@ -257,7 +272,7 @@ export default function DocumentList() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="application/pdf"
+          accept={SIGNING_UPLOAD_ACCEPT}
           className="sr-only"
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -268,7 +283,7 @@ export default function DocumentList() {
         <input
           ref={selfFileInputRef}
           type="file"
-          accept="application/pdf"
+          accept={SIGNING_UPLOAD_ACCEPT}
           className="sr-only"
           onChange={(e) => {
             const file = e.target.files?.[0];

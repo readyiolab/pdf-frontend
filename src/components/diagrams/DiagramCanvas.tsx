@@ -735,6 +735,13 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       }
       syncPaperOverlay(graph, paperRef.current);
       emitSelection();
+      requestAnimationFrame(() => {
+        const g = graphRef.current;
+        if (!g) return;
+        centerPageInViewport(g, settingsRef.current);
+        syncPaperOverlay(g, paperRef.current);
+        g.sizeDidChange();
+      });
     },
     [emitSelection]
   );
@@ -1172,12 +1179,14 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       const cw = root.clientWidth;
       const ch = root.clientHeight;
       const prev = lastContainerSizeRef.current;
-      if (prev.w > 0 && prev.h > 0) {
+      if (prev.w <= 0 || prev.h <= 0) {
+        if (cw > 0 && ch > 0) {
+          centerPageInViewport(graph, settingsRef.current);
+        }
+      } else if (prev.w > 0 && prev.h > 0) {
         const scale = graph.getView().getScale() || 1;
         const tr = graph.getView().getTranslate();
         graph.getView().setTranslate(tr.x + (cw - prev.w) / 2 / scale, tr.y + (ch - prev.h) / 2 / scale);
-      } else {
-        centerPageInViewport(graph, settingsRef.current);
       }
       lastContainerSizeRef.current = { w: cw, h: ch };
       graph.sizeDidChange();
@@ -2221,7 +2230,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     >
       <div
         ref={paperRef}
-        className="pointer-events-none absolute left-0 top-0 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_8px_24px_rgba(0,0,0,0.08)]"
+        className="pointer-events-none absolute left-0 top-0 z-0 shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_8px_24px_rgba(0,0,0,0.08)]"
         style={{
           width: size.w,
           height: size.h,
@@ -2235,7 +2244,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         }}
         aria-hidden
       />
-      <div ref={hostRef} className="absolute inset-0 min-h-full min-w-full" />
+      <div ref={hostRef} className="absolute inset-0 z-[1] min-h-full min-w-full" />
 
       {strokePreview ? (
         <svg

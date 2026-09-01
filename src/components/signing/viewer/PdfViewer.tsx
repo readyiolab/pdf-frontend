@@ -294,6 +294,23 @@ export const PdfViewer = forwardRef<PdfViewerHandle, PdfViewerProps>(function Pd
     );
   }
 
+  if (!isLoading && !pdf && source) {
+    return (
+      <div className={cn("flex h-full flex-col items-center justify-center gap-2 p-8 text-center", className)}>
+        <Spinner className="size-4" />
+        <p className="text-sm text-muted-foreground">Preparing document…</p>
+      </div>
+    );
+  }
+
+  if (!isLoading && !pdf && !source) {
+    return (
+      <div className={cn("flex h-full flex-col items-center justify-center gap-2 p-8 text-center", className)}>
+        <p className="text-sm text-muted-foreground">No document to display.</p>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("flex h-full flex-col overflow-hidden bg-muted/40", className)}>
       <ViewerToolbar

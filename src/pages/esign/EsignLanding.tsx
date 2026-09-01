@@ -56,7 +56,7 @@ const STEPS = [
   {
     n: "01",
     title: "Invite signers",
-    body: "Upload a PDF, place fields, add recipients, and set signing order.",
+    body: "Upload a PDF or Word document (.docx), place fields, add recipients, and set signing order.",
   },
   {
     n: "02",

@@ -41,6 +41,8 @@ import { SendDialog } from "@/components/signing/send/SendDialog";
 import { StatusTracker } from "@/components/signing/send/StatusTracker";
 
 const STATUS_LABEL: Record<SignDocumentStatus, string> = {
+  CONVERTING: "Converting Word to PDF",
+  CONVERSION_FAILED: "Conversion failed",
   DRAFT: "Draft",
   SENT: "Waiting for signatures",
   FINALIZING: "Sealing signed PDF",
@@ -164,29 +166,51 @@ export default function DocumentEditor() {
 
   useEffect(() => {
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
-    (async () => {
+    const loadFileUrl = async (docId: string) => {
+      const { url } = await signingApi.getFileUrl(docId);
+      if (!cancelled) setFileUrl(url);
+    };
+
+    const loadDocument = async () => {
+      let stillConverting = false;
       try {
-        const doc = await signingApi.getDocument(id);
+        let doc = await signingApi.getDocument(id);
         if (cancelled) return;
+
+        if (doc.status === "CONVERTING") {
+          setDocument(doc);
+          setLoadError(null);
+          stillConverting = true;
+          pollTimer = setTimeout(loadDocument, 2000);
+          return;
+        }
+
+        if (doc.status === "CONVERSION_FAILED") {
+          setDocument(doc);
+          setLoadError("Word conversion failed. Delete this document and try uploading again.");
+          return;
+        }
 
         setDocument(doc);
         setRecipients(doc.recipients ?? []);
         setFlowType(doc.flowType);
         setActiveRecipientId(doc.recipients?.[0]?.id ?? null);
 
-        const { url } = await signingApi.getFileUrl(id);
-        if (cancelled) return;
-        setFileUrl(url);
+        await loadFileUrl(id);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Couldn't load this document.");
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled && !stillConverting) setIsLoading(false);
       }
-    })();
+    };
+
+    void loadDocument();
 
     return () => {
       cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [id]);
 
@@ -416,10 +440,11 @@ export default function DocumentEditor() {
   } as const;
 
   if (isLoading) {
+    const converting = document?.status === "CONVERTING";
     return (
-      <div className="flex h-[70vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+      <div className="flex h-[70vh] flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
         <Spinner className="size-4" />
-        Loading document…
+        {converting ? "Converting Word to PDF…" : "Loading document…"}
       </div>
     );
   }

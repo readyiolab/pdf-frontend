@@ -7,6 +7,7 @@ import type {
   SignField,
   SignRecipient,
 } from "@/lib/signing/types";
+import { SIGNING_DOCX_MIME, SIGNING_PDF_MIME } from "@/lib/signing/types";
 
 export interface Paginated<T> {
   pagination: { page: number; limit: number; total: number; totalPages: number };
@@ -42,7 +43,7 @@ export const signingApi = {
   // --- Documents ---
 
   /**
-   * Uploads a PDF and registers it as a signing document.
+   * Uploads a PDF or Word (.docx) document and registers it for signing.
    *
    * Three steps, mirroring the existing tool upload flow: ask for a presigned
    * PUT, send the bytes straight to storage (never through our API), then tell
@@ -54,11 +55,12 @@ export const signingApi = {
     pageCount: number,
     onProgress?: (percent: number) => void
   ): Promise<SignDocument> {
+    const contentType = file.type || (file.name.toLowerCase().endsWith(".docx") ? SIGNING_DOCX_MIME : SIGNING_PDF_MIME);
     const { uploadUrl, fileKey } = await apiFetch("/documents/presign", {
       method: "POST",
       body: JSON.stringify({
         fileName: file.name,
-        contentType: "application/pdf",
+        contentType,
         fileSize: file.size,
       }),
     });
@@ -69,6 +71,19 @@ export const signingApi = {
       method: "POST",
       body: JSON.stringify({ fileKey, fileName: file.name, pageCount }),
     });
+  },
+
+  /** Poll until a Word upload finishes converting to PDF. */
+  async waitForDocumentReady(id: string): Promise<SignDocument> {
+    for (;;) {
+      const doc = await this.getDocument(id);
+      if (doc.status === "DRAFT") return doc;
+      if (doc.status === "CONVERSION_FAILED") {
+        throw new Error("Word conversion failed. Delete the document and try uploading again.");
+      }
+      if (doc.status !== "CONVERTING") return doc;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   },
 
   listDocuments: (params: {
@@ -180,6 +195,10 @@ export const signingApi = {
   getCertificateUrl: (documentId: string): Promise<{ url: string }> =>
     apiFetch(`/documents/${documentId}/certificate`, { method: "GET" }),
 
+  /** Short-lived signed URL to download the original Word (.docx) upload. */
+  getSourceDownloadUrl: (documentId: string): Promise<{ url: string }> =>
+    apiFetch(`/documents/${documentId}/download-source`, { method: "GET" }),
+
   // --- Templates ---
 
   listTemplates: (): Promise<{ templates: SignTemplateSummary[] }> =>
@@ -260,6 +279,7 @@ export interface DocumentStatus {
   completedAt: string | null;
   expiresAt: string | null;
   originalHash: string | null;
+  sourceFileName: string | null;
   currentVersion: number;
   progress: { signed: number; total: number; fieldsFilled: number; fieldsTotal: number };
   recipients: SignRecipient[];
