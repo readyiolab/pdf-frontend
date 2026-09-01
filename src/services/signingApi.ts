@@ -7,7 +7,7 @@ import type {
   SignField,
   SignRecipient,
 } from "@/lib/signing/types";
-import { SIGNING_DOCX_MIME, SIGNING_PDF_MIME } from "@/lib/signing/types";
+import { SIGNING_DOCX_MIME, SIGNING_PDF_MIME, isSigningDocxFile } from "@/lib/signing/types";
 
 export interface Paginated<T> {
   pagination: { page: number; limit: number; total: number; totalPages: number };
@@ -55,7 +55,9 @@ export const signingApi = {
     pageCount: number,
     onProgress?: (percent: number) => void
   ): Promise<SignDocument> {
-    const contentType = file.type || (file.name.toLowerCase().endsWith(".docx") ? SIGNING_DOCX_MIME : SIGNING_PDF_MIME);
+    const contentType = isSigningDocxFile(file)
+      ? SIGNING_DOCX_MIME
+      : file.type || SIGNING_PDF_MIME;
     const { uploadUrl, fileKey } = await apiFetch("/documents/presign", {
       method: "POST",
       body: JSON.stringify({
@@ -67,9 +69,15 @@ export const signingApi = {
 
     await apiService.uploadFileToS3(file, uploadUrl, onProgress);
 
+    const body: { fileKey: string; fileName: string; pageCount?: number } = {
+      fileKey,
+      fileName: file.name,
+    };
+    if (pageCount > 0) body.pageCount = pageCount;
+
     return apiFetch("/documents", {
       method: "POST",
-      body: JSON.stringify({ fileKey, fileName: file.name, pageCount }),
+      body: JSON.stringify(body),
     });
   },
 

@@ -206,8 +206,9 @@ export const SIGNING_DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
 
 export function isSigningDocxFile(file: File): boolean {
-  if (file.type === SIGNING_DOCX_MIME) return true;
-  return /\.docx$/i.test(file.name);
+  if (/\.docx$/i.test(file.name)) return true;
+  const t = file.type.toLowerCase();
+  return t === SIGNING_DOCX_MIME || t === "application/zip" || t === "application/x-zip-compressed";
 }
 
 export function isSigningPdfFile(file: File): boolean {
