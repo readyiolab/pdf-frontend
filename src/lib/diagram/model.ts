@@ -33,6 +33,8 @@ export const edgeStyleSchema = z.object({
   exitY: z.number().optional(),
   entryX: z.number().optional(),
   entryY: z.number().optional(),
+  exitPerimeter: z.boolean().optional(),
+  entryPerimeter: z.boolean().optional(),
   points: z.array(z.tuple([z.number(), z.number()])).optional(),
 });
 
@@ -449,12 +451,12 @@ export function shapeToMaxStyle(shape: string): Partial<CellStyle> {
   const map: Record<string, Partial<CellStyle>> = {
     rectangle: { shape: "rectangle" },
     rounded: { shape: "rectangle", rounded: true, arcSize: 20 },
-    ellipse: { shape: "ellipse" },
-    circle: { shape: "ellipse" },
-    diamond: { shape: "rhombus" },
-    rhombus: { shape: "rhombus" },
+    ellipse: { shape: "ellipse", perimeter: "ellipsePerimeter" },
+    circle: { shape: "ellipse", perimeter: "ellipsePerimeter" },
+    diamond: { shape: "rhombus", perimeter: "rhombusPerimeter" },
+    rhombus: { shape: "rhombus", perimeter: "rhombusPerimeter" },
     parallelogram: { shape: CUSTOM_SHAPE.parallelogram },
-    hexagon: { shape: "hexagon" },
+    hexagon: { shape: "hexagon", perimeter: "hexagonPerimeter" },
     cylinder: { shape: "cylinder" },
     cloud: { shape: "cloud" },
     actor: { shape: "actor" },
@@ -463,8 +465,8 @@ export function shapeToMaxStyle(shape: string): Partial<CellStyle> {
     document: { shape: CUSTOM_SHAPE.document },
     note: { shape: CUSTOM_SHAPE.note },
     process: { shape: "rectangle", rounded: true, arcSize: 20 },
-    decision: { shape: "rhombus" },
-    terminator: { shape: "ellipse" },
+    decision: { shape: "rhombus", perimeter: "rhombusPerimeter" },
+    terminator: { shape: "ellipse", perimeter: "ellipsePerimeter" },
     data: { shape: CUSTOM_SHAPE.parallelogram },
     text: { shape: "rectangle", fillColor: "none", strokeColor: "none" },
     arrow: { shape: "arrow" },
@@ -536,6 +538,8 @@ function edgeToCellStyle(edge: DiagramEdge): CellStyle {
     ...(typeof s.exitY === "number" ? { exitY: s.exitY } : {}),
     ...(typeof s.entryX === "number" ? { entryX: s.entryX } : {}),
     ...(typeof s.entryY === "number" ? { entryY: s.entryY } : {}),
+    ...(s.exitPerimeter ? { exitPerimeter: true } : {}),
+    ...(s.entryPerimeter ? { entryPerimeter: true } : {}),
   };
 }
 
@@ -732,6 +736,8 @@ function edgeToDiagramEdge(cell: Cell): DiagramEdge | null {
       exitY: typeof style.exitY === "number" ? style.exitY : undefined,
       entryX: typeof style.entryX === "number" ? style.entryX : undefined,
       entryY: typeof style.entryY === "number" ? style.entryY : undefined,
+      exitPerimeter: style.exitPerimeter === true ? true : undefined,
+      entryPerimeter: style.entryPerimeter === true ? true : undefined,
       points: points?.length ? points : undefined,
     },
   };

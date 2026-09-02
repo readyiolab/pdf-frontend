@@ -20,13 +20,10 @@ import {
   ParallelEdgeLayout,
   getDefaultPlugins,
   StencilShapeConfig,
-  ConnectionConstraint,
-  Point,
   VertexHandlerConfig,
   SelectionHandler,
   type Cell,
   type CellStyle,
-  type CellState,
 } from "@maxgraph/core";
 import "@maxgraph/core/css/common.css";
 import {
@@ -45,6 +42,12 @@ import {
 import { allShapes, type ShapeDef } from "@/lib/diagram/shapes";
 import { type StrokePoint, erasePolylineByRadius } from "@/lib/diagram/freehand";
 import { CUSTOM_SHAPE, registerDiagramCustomShapes } from "@/lib/diagram/customShapes";
+import {
+  clearConnectionPoints,
+  configureGraphConnections,
+  isConnectableDiagramVertex,
+  pinConnectionPoints,
+} from "@/lib/diagram/connectionSetup";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -104,13 +107,6 @@ const QUICK_SHAPES: { id: string; shape: string; label: string; w: number; h: nu
   { id: "rect", shape: "rectangle", label: "Rectangle", w: 120, h: 60, preview: "▭" },
   { id: "ellipse", shape: "ellipse", label: "Ellipse", w: 100, h: 60, preview: "⬭" },
   { id: "diamond", shape: "diamond", label: "Diamond", w: 100, h: 80, preview: "◇" },
-];
-
-const CARDINAL_CONSTRAINTS = [
-  new ConnectionConstraint(new Point(0.5, 0), true, "N"),
-  new ConnectionConstraint(new Point(1, 0.5), true, "E"),
-  new ConnectionConstraint(new Point(0.5, 1), true, "S"),
-  new ConnectionConstraint(new Point(0, 0.5), true, "W"),
 ];
 
 const PAGE_MARGIN = 40;
@@ -674,8 +670,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     const graph = graphRef.current;
     const root = rootRef.current;
     const mode = toolModeRef.current;
-    // Quick-add / waypoint UI only in select (quick-add) or connector (waypoints)
-    if (mode !== "select" && mode !== "connector" && mode !== "arrow") {
+    if (mode !== "select") {
       setHoverUi(null);
       setPaletteDir(null);
       return;
@@ -791,12 +786,9 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       baseCellLabelChanged(cell, next, Boolean(autoSize));
     };
 
-    // Cardinal connection points (draw.io-style)
-    graph.getAllConnectionConstraints = (terminal: CellState | null, _source: boolean) => {
-      if (settingsRef.current?.connectionPoints === false) return null;
-      if (!terminal?.cell?.isVertex()) return null;
-      return CARDINAL_CONSTRAINTS;
-    };
+    configureGraphConnections(graph, {
+      connectionPointsEnabled: () => settingsRef.current?.connectionPoints !== false,
+    });
 
     const selectionHandler = graph.getPlugin("SelectionHandler") as SelectionHandler | null;
     if (selectionHandler) {
@@ -830,6 +822,8 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       const sel = graph.getSelectionCells();
       const v = sel.find((c) => c.isVertex()) ?? null;
       updateHoverFromCell(v);
+      if (v && isConnectableDiagramVertex(v)) pinConnectionPoints(graph, v);
+      else clearConnectionPoints(graph);
     });
 
     graph.getView().addListener(InternalEvent.SCALE, refreshHover as never);
@@ -1021,25 +1015,70 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
         if (mode !== "select" && mode !== "connector" && mode !== "arrow") {
           setHoverUi(null);
           setPaletteDir(null);
+          clearConnectionPoints(graph);
           return;
         }
-        // In connector mode, only show waypoints while hovering a vertex (or connecting)
-        if ((mode === "connector" || mode === "arrow") && !connectingRef.current) {
-          const cell = me.getCell();
-          if (cell?.isVertex()) updateHoverFromCell(cell);
-          else {
-            setHoverUi(null);
-            setPaletteDir(null);
-          }
-          return;
-        }
-        if (mode !== "select") return;
-        const cell = me.getCell();
-        if (cell?.isVertex()) updateHoverFromCell(cell);
-        else if (!graph.getSelectionCells().some((c) => c.isVertex())) {
+
+        const evt = me.getEvent();
+        const hovered = me.getCell();
+        const graphPt = clientToGraph(graph, host, evt.clientX, evt.clientY);
+
+        if (mode === "connector" || mode === "arrow") {
           setHoverUi(null);
           setPaletteDir(null);
+          if (hovered && isConnectableDiagramVertex(hovered)) {
+            pinConnectionPoints(graph, hovered, {
+              graphX: graphPt.x,
+              graphY: graphPt.y,
+              evt,
+            });
+          } else {
+            const selected = graph
+              .getSelectionCells()
+              .find((c) => isConnectableDiagramVertex(c)) ?? null;
+            if (selected) {
+              pinConnectionPoints(graph, selected, {
+                graphX: graphPt.x,
+                graphY: graphPt.y,
+                evt,
+              });
+            } else clearConnectionPoints(graph);
+          }
+          const conn = graph.getPlugin("ConnectionHandler") as { isConnecting?: () => boolean } | null;
+          if (host) host.style.cursor = conn?.isConnecting?.() ? "crosshair" : "";
+          return;
         }
+
+        if (hovered?.isVertex()) {
+          updateHoverFromCell(hovered);
+          if (isConnectableDiagramVertex(hovered)) {
+            pinConnectionPoints(graph, hovered, {
+              graphX: graphPt.x,
+              graphY: graphPt.y,
+              evt,
+            });
+          }
+        } else {
+          const selected = graph
+            .getSelectionCells()
+            .find((c) => c.isVertex()) ?? null;
+          if (selected) {
+            updateHoverFromCell(selected);
+            if (isConnectableDiagramVertex(selected)) {
+              pinConnectionPoints(graph, selected, {
+                graphX: graphPt.x,
+                graphY: graphPt.y,
+                evt,
+              });
+            }
+          } else {
+            setHoverUi(null);
+            setPaletteDir(null);
+            clearConnectionPoints(graph);
+          }
+        }
+        const conn = graph.getPlugin("ConnectionHandler") as { isConnecting?: () => boolean } | null;
+        if (host) host.style.cursor = conn?.isConnecting?.() ? "crosshair" : "";
       },
     };
     graph.addMouseListener(mouseListener as never);
@@ -1099,6 +1138,14 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     };
     host.addEventListener("wheel", onWheel, { passive: false });
 
+    const onHostMouseLeave = () => {
+      const sel =
+        graph.getSelectionCells().find((c) => isConnectableDiagramVertex(c)) ?? null;
+      if (sel) pinConnectionPoints(graph, sel);
+      else clearConnectionPoints(graph);
+    };
+    host.addEventListener("mouseleave", onHostMouseLeave);
+
     applyDefaultEdgeStyle(graph, defaultEdgeStyleRef.current);
 
     // Connector drags insert an edge with an empty style, which would serialize
@@ -1156,6 +1203,7 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
       graphReadyRef.current = false;
       pendingPageRef.current = null;
       host.removeEventListener("wheel", onWheel);
+      host.removeEventListener("mouseleave", onHostMouseLeave);
       graph.removeMouseListener(mouseListener as never);
       graph.removeListener(onDblClick as never);
       if (flowTimerRef.current) {
@@ -1195,6 +1243,12 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
     ro.observe(root);
     return () => ro.disconnect();
   }, []);
+
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph || settings?.connectionPoints !== false) return;
+    clearConnectionPoints(graph);
+  }, [settings?.connectionPoints]);
 
   useEffect(() => {
     const graph = graphRef.current;
@@ -2291,8 +2345,8 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
 
       {hoverUi &&
         !readOnly &&
-        (toolModeUi === "select" || toolModeUi === "connector" || toolModeUi === "arrow") &&
-        (toolModeUi !== "select" || settings?.connectionArrows !== false) && (
+        toolModeUi === "select" &&
+        settings?.connectionArrows !== false && (
         <div
           className="pointer-events-none absolute z-20"
           style={{
@@ -2305,34 +2359,26 @@ export const DiagramCanvas = forwardRef<DiagramCanvasHandle, Props>(function Dia
           {(["n", "e", "s", "w"] as Dir[]).map((dir) => {
             const pos =
               dir === "n"
-                ? { left: "50%", top: 0, transform: "translate(-50%, -130%)" }
+                ? { left: "50%", top: 0, transform: "translate(-50%, -180%)" }
                 : dir === "s"
-                  ? { left: "50%", top: "100%", transform: "translate(-50%, 30%)" }
+                  ? { left: "50%", top: "100%", transform: "translate(-50%, 80%)" }
                   : dir === "e"
-                    ? { left: "100%", top: "50%", transform: "translate(30%, -50%)" }
-                    : { left: 0, top: "50%", transform: "translate(-130%, -50%)" };
-            const connectorMode = toolModeUi === "connector" || toolModeUi === "arrow";
+                    ? { left: "100%", top: "50%", transform: "translate(80%, -50%)" }
+                    : { left: 0, top: "50%", transform: "translate(-180%, -50%)" };
             return (
               <button
                 key={dir}
                 type="button"
-                title={connectorMode ? "Connection point" : "Add connected shape"}
-                className={cn(
-                  "pointer-events-auto absolute flex items-center justify-center shadow-sm",
-                  connectorMode
-                    ? "size-2.5 rounded-full border-2 border-white bg-[#3b82f6]"
-                    : "size-5 rounded-sm bg-[#93c5fd]/80 text-[10px] text-[#1e3a8a] hover:bg-[#60a5fa]"
-                )}
+                title="Add connected shape"
+                className="pointer-events-auto absolute flex size-5 items-center justify-center rounded-sm bg-[#93c5fd]/80 text-[10px] text-[#1e3a8a] shadow-sm hover:bg-[#60a5fa]"
                 style={pos}
-                onMouseEnter={() => {
-                  if (!connectorMode) setPaletteDir(dir);
-                }}
+                onMouseEnter={() => setPaletteDir(dir)}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (!connectorMode) setPaletteDir(dir);
+                  setPaletteDir(dir);
                 }}
               >
-                {connectorMode ? null : dir === "n" ? "▲" : dir === "s" ? "▼" : dir === "e" ? "▶" : "◀"}
+                {dir === "n" ? "▲" : dir === "s" ? "▼" : dir === "e" ? "▶" : "◀"}
               </button>
             );
           })}
